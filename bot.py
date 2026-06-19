@@ -30,6 +30,13 @@ data = load()
 def is_owner(message):
     return message.from_user.id == OWNER_ID
 
+# Fungsi pembantu untuk mengambil username atau first_name player
+def get_player_name(reply_message):
+    user = reply_message.from_user
+    if user.username:
+        return f"@{user.username}"
+    return user.first_name
+
 # ========== D1 - D4 (OWNER ONLY, REPLY) ==========
 
 @bot.message_handler(commands=['d1'])
@@ -40,7 +47,7 @@ def d1(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply dulu blok!!")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["semi"][0] = name
     save(data)
     bot.reply_to(message, f"🏆 {name} POT 1 PLAYER 1")
@@ -53,7 +60,7 @@ def d2(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply dulu cok!!")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["semi"][1] = name
     save(data)
     bot.reply_to(message, f"🏆 {name} POT 1 PLAYER 2")
@@ -66,7 +73,7 @@ def d3(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply dulu su!!")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["semi"][2] = name
     save(data)
     bot.reply_to(message, f"🏆 {name} POT 2 PLAYER 1")
@@ -79,7 +86,7 @@ def d4(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply player")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["semi"][3] = name
     save(data)
     bot.reply_to(message, f"🏆 {name} POT 2 PLAYER 2")
@@ -94,7 +101,7 @@ def f1(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply player")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["final"][0] = name
     save(data)
     bot.reply_to(message, f"🔥 {name} FINAL PLAYER 1")
@@ -107,7 +114,7 @@ def f2(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply player")
 
-    name = message.reply_to_message.from_user.first_name
+    name = get_player_name(message.reply_to_message)
     data["final"][1] = name
     save(data)
     bot.reply_to(message, f"🔥 {name} FINAL PLAYER 2")
@@ -122,20 +129,18 @@ def win(message):
     if not message.reply_to_message:
         return bot.reply_to(message, "❌ Reply pemenang")
 
-    winner = message.reply_to_message.from_user.first_name
+    winner = get_player_name(message.reply_to_message)
     data["winner"] = winner
     save(data)
 
     bot.reply_to(message, f"🏆 {winner} MENANG!! 🔥")
 
 # ========== POT VIEW ==========
-
 @bot.message_handler(commands=['pot'])
 def pot(message):
     semi = data["semi"]
     final = data["final"]
 
-    # Dihapus validasi strict-nya biar bracket kosong tetep bisa diintip isinya
     text = f"""🏆 TOURNAMENT BRACKET
 
 SEMI FINAL:
@@ -149,15 +154,27 @@ WINNER:
 👑 {data["winner"] or "???"}"""
     bot.reply_to(message, text)
 
-# ========== WELCOME ==========
+# ========== WELCOME CHAT MEMBER ==========
 
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
         bot.send_message(
             message.chat.id,
-            f"👋 Welcome ngentod {user.first_name}\nStay cokkk fastt inii 🔥"
+            f"👋 welcome pepek {user.first_name}\nstay cokkk fastt inii 🔥"
         )
+
+# ========== TEXT TRIGGER (PAY & RULES) ==========
+
+@bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    # Mengubah pesan jadi huruf kecil semua biar deteksinya gak sensitif huruf kapital
+    msg_text = message.text.lower().strip()
+    
+    if msg_text == "pay":
+        bot.reply_to(message, "𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : https://t.me/+r-dDf3CxAHgzNGVl")
+    elif msg_text == "rules":
+        bot.reply_to(message, "𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : https://t.me/+LHr8jRVQHsszZGJl")
 
 print("Bot aktif...")
 bot.infinity_polling()
