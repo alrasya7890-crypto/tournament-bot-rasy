@@ -2,6 +2,7 @@ import telebot
 import json
 import os
 
+# Mengambil variabel berdasarkan "KEY" yang lu input di tab Variables Railway
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
@@ -132,3 +133,31 @@ def win(message):
 @bot.message_handler(commands=['pot'])
 def pot(message):
     semi = data["semi"]
+    final = data["final"]
+
+    # Dihapus validasi strict-nya biar bracket kosong tetep bisa diintip isinya
+    text = f"""🏆 TOURNAMENT BRACKET
+
+SEMI FINAL:
+1️⃣ {semi[0] or "Belum ada"} vs {semi[1] or "Belum ada"}
+2️⃣ {semi[2] or "Belum ada"} vs {semi[3] or "Belum ada"}
+
+FINAL:
+🔥 {final[0] or "Winner SF1"} vs {final[1] or "Winner SF2"}
+
+WINNER:
+👑 {data["winner"] or "???"}"""
+    bot.reply_to(message, text)
+
+# ========== WELCOME ==========
+
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome(message):
+    for user in message.new_chat_members:
+        bot.send_message(
+            message.chat.id,
+            f"👋 Welcome ngentod {user.first_name}\nStay cokkk fastt inii 🔥"
+        )
+
+print("Bot aktif...")
+bot.infinity_polling()
