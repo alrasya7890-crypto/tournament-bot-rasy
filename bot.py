@@ -2,8 +2,8 @@ import telebot
 import json
 import os
 
-TOKEN = os.getenv("8935590480:AAFPrBIZBpLLL5GlGFUrvuOi0zAMGVKwu4o")
-OWNER_ID = int(os.getenv("8266296395"))
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
 
 bot = telebot.TeleBot(TOKEN)
 
