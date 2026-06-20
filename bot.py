@@ -47,7 +47,7 @@ def get_wib_time():
     day_name = days[wib_now.weekday()]
     return wib_now.strftime(f"{day_name}, %d-%m-%Y %H:%M WIB")
 
-# Fungsi untuk generate tampilan bracket estetik FT CS RASY (Sesuai 1000920782.jpg)
+# Fungsi untuk generate tampilan bracket estetik FT CS RASY
 def generate_bracket_text():
     semi = data["semi"]
     final = data["final"]
@@ -94,7 +94,7 @@ def welcome(message):
             f"👋 Welcome ngentod {user.first_name}\nStay cokkk fastt inii 🔥"
         )
 
-# ========== HANDLER SEMUA PERINTAH BERBASIS TEKS (TANPA GARI MIRING) ==========
+# ========== HANDLER SEMUA PERINTAH BERBASIS TEKS (TANPA GARIS MIRING) ==========
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
@@ -110,7 +110,6 @@ def handle_text(message):
 
     # 2. PERINTAH KHUSUS OWNER ONLY (Kunci Mutlak)
     if not is_owner(message):
-        # Jika player umum mencoba mengetik command owner, abaikan / kasih respon aman
         if msg_text in ["d1", "d2", "d3", "d4", "f1", "f2", "win", "clear"]:
             return bot.reply_to(message, "❌ Cuma owner yang bisa atur bracket cok!!")
         return
@@ -129,57 +128,58 @@ def handle_text(message):
             "last_update": get_wib_time()
         }
         save(data)
-        bot.reply_to(message, "✅ **Bracket turnamen berhasil di-reset total jadi kosong, Sya!**")
+        return bot.reply_to(message, "✅ **Bracket turnamen berhasil di-reset total jadi kosong, Sya!**")
 
-    elif msg_text == "d1":
-        name = get_player_name(message.reply_to_message)
+    # Jalankan update data berdasarkan input owner
+    name = get_player_name(message.reply_to_message)
+    data["last_update"] = get_wib_time()
+
+    if msg_text == "d1":
         data["semi"][0] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🏆 {name} POT 1 PLAYER 1")
+        p1 = data["semi"][0] or "?"
+        p2 = data["semi"][1] or "?"
+        bot.reply_to(message, f"🏆 **POT 1:** {p1} vs {p2}")
 
     elif msg_text == "d2":
-        name = get_player_name(message.reply_to_message)
         data["semi"][1] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🏆 {name} POT 1 PLAYER 2")
+        p1 = data["semi"][0] or "?"
+        p2 = data["semi"][1] or "?"
+        bot.reply_to(message, f"🏆 **POT 1:** {p1} vs {p2}")
 
     elif msg_text == "d3":
-        name = get_player_name(message.reply_to_message)
         data["semi"][2] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🏆 {name} POT 2 PLAYER 1")
+        p3 = data["semi"][2] or "?"
+        p4 = data["semi"][3] or "?"
+        bot.reply_to(message, f"🏆 **POT 2:** {p3} vs {p4}")
 
     elif msg_text == "d4":
-        name = get_player_name(message.reply_to_message)
         data["semi"][3] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🏆 {name} POT 2 PLAYER 2")
+        p3 = data["semi"][2] or "?"
+        p4 = data["semi"][3] or "?"
+        bot.reply_to(message, f"🏆 **POT 2:** {p3} vs {p4}")
 
     elif msg_text == "f1":
-        name = get_player_name(message.reply_to_message)
         data["final"][0] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🔥 {name} FINAL PLAYER 1")
+        f1_p = data["final"][0] or "?"
+        f2_p = data["final"][1] or "?"
+        bot.reply_to(message, f"🔥 **FINAL:** {f1_p} vs {f2_p}")
 
     elif msg_text == "f2":
-        name = get_player_name(message.reply_to_message)
         data["final"][1] = name
-        data["last_update"] = get_wib_time()
         save(data)
-        bot.reply_to(message, f"🔥 {name} FINAL PLAYER 2")
+        f1_p = data["final"][0] or "?"
+        f2_p = data["final"][1] or "?"
+        bot.reply_to(message, f"🔥 **FINAL:** {f1_p} vs {f2_p}")
 
     elif msg_text == "win":
-        winner = get_player_name(message.reply_to_message)
-        data["winner"] = winner
-        data["last_update"] = get_wib_time()
+        data["winner"] = name
         save(data)
-        bot.reply_to(message, f"🏆 {winner} MENANG!! 🔥")
+        bot.reply_to(message, f"👑 **PEMENANG FT CS RASY MALAM INI:** {name} !! 🔥")
 
 print("Bot aktif...")
 bot.infinity_polling()
-        
