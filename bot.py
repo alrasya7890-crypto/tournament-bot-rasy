@@ -9,7 +9,6 @@ SUPER_ADMIN_ID = int(os.getenv("OWNER_ID"))
 
 bot = telebot.TeleBot(TOKEN)
 DATA_FILE = "data.json"
-last_main_message_id = None
 
 def load():
     try:
@@ -89,33 +88,19 @@ def welcome(message):
     for user in message.new_chat_members:
         bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
 
-@bot.channel_post_handler(func=lambda message: True)
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
-    global data, last_main_message_id
-    
+    global data
     msg_text = message.text.strip() if message.text else ""
     msg_lower = msg_text.lower()
     user_id = message.from_user.id if message.from_user else 0
     
-    # ─── FITUR AUTOMATION TRIGGER BROADCAST ───
-    if msg_lower != 'p' and msg_lower != '/bc' and msg_text != '':
-        last_main_message_id = message.message_id
-    
-    if msg_lower == 'p':
-        if user_id != 0 and user_id != SUPER_ADMIN_ID: return
-        if last_main_message_id is not None:
-            try:
-                bot.send_message(message.chat.id, "/bc", reply_to_message_id=last_main_message_id)
-                bot.delete_message(message.chat.id, message.message_id)
-            except: pass
-        return
-
-    # ─── COMMANDS ───
+    # Perintah Umum
     if msg_lower == "pot": return bot.reply_to(message, generate_bracket_text())
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {data['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {data['rules_link']}")
 
+    # Perintah Owner
     if msg_lower.startswith(("addowner ", "delowner ")) or msg_lower == "listowner":
         if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Cuma Rasya yang bisa pake ini!")
         if msg_lower.startswith("addowner "):
@@ -159,4 +144,3 @@ def handle_text(message):
 
 print("Bot aktif...")
 bot.infinity_polling()
-        
