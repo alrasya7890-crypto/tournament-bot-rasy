@@ -25,7 +25,7 @@ def load():
             "open_by": "@rrassyaaaa",
             "pay_link": "https://t.me/+r-dDf3CxAHgzNGVl",
             "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",
-            "owners": [] # Menyimpan daftar ID owner/pembeli tambahan
+            "owners": [] 
         }
 
 def save(data):
@@ -114,6 +114,8 @@ def welcome(message):
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
+    global data  # Ditaruh paling atas biar gak dituduh melanggar syntax lagi
+    
     msg_text = message.text.strip()
     msg_lower = msg_text.lower()
     user_id = message.from_user.id
@@ -163,12 +165,11 @@ def handle_text(message):
 
     # 3. PERINTAH KHUSUS OWNER (Lu + Pembeli Lu yang udah di-addowner)
     if not is_authorized_owner(message):
-        # Proteksi teks perintah dasar owner dari player luar
         if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win", "clear"] or msg_lower.startswith(("settitle ", "setowner ", "setpay ", "setrules ")):
             return bot.reply_to(message, "❌ Cuma owner yang bisa pake fitur ini cok!!")
         return
 
-    # Logika FITUR SETTING / SETFITUR via Chat (Bisa dijalankan lewat Private Message Bot)
+    # Logika FITUR SETTING / SETFITUR via Chat
     if msg_lower.startswith("settitle "):
         new_title = msg_text[9:].strip()
         data["title"] = new_title
@@ -199,7 +200,6 @@ def handle_text(message):
 
     # Eksekusi reset bracket
     if msg_lower == "clear":
-        global data
         data["semi"] = [None, None, None, None]
         data["final"] = [None, None]
         data["winner"] = None
@@ -260,3 +260,4 @@ def handle_text(message):
 
 print("Bot aktif...")
 bot.infinity_polling()
+    
