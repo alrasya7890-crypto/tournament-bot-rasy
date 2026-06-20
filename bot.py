@@ -11,6 +11,9 @@ bot = telebot.TeleBot(TOKEN)
 
 DATA_FILE = "data.json"
 
+# Variabel memori sementara untuk mencatat ID pesan utama paling baru (fitur Auto Broadcast)
+last_main_message_id = None
+
 def load():
     try:
         with open(DATA_FILE, "r") as f:
@@ -110,17 +113,44 @@ def welcome(message):
             f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥"
         )
 
-# ========== HANDLER SEMUA PERINTAH BERBASIS TEKS (TANPA GARIS MIRING) ==========
+# ========== HANDLER SEMUA PERINTAH BERBASIS TEKS (MENDUKUNG CHANNEL & GRUP) ==========
 
-@bot.message_handler(func=lambda message: True)
+@bot.channel_post_handler(func=lambda message: True) # Menangkap chat jika bot ditaruh di Saluran/Channel
+@bot.message_handler(func=lambda message: True)       # Menangkap chat di Grup atau PC
 def handle_text(message):
-    global data  # Ditaruh paling atas biar gak dituduh melanggar syntax lagi
+    global data, last_main_message_id  
     
-    msg_text = message.text.strip()
+    msg_text = message.text.strip() if message.text else ""
     msg_lower = msg_text.lower()
-    user_id = message.from_user.id
+    user_id = message.from_user.id if message.from_user else None
     
-    # 1. PERINTAH UMUM (Bisa diakses siapapun)
+    # ─── FITUR AUTOMATION TRIGGER BROADCAST (ANTI SPAM & AUTO TARGET) ───
+    # Jika ada pesan teks/media masuk yang BUKAN perintah pemicu, simpan ID-nya sebagai target pesan utama terbaru
+    if msg_lower != 'p' and msg_lower != '/bc' and msg_text != '':
+        last_main_message_id = message.message_id
+        # Biarkan proses berlanjut ke bawah untuk mengecek command turnamen lainnya
+    
+    # Eksekusi pemicu otomatis jika LU (Super Admin) ketik 'p'
+    if msg_lower == 'p':
+        # Fitur ini di-lock khusus untuk ID lu agar member/orang lain gak bisa sembarangan nge-trigger
+        if user_id and user_id != SUPER_ADMIN_ID:
+            return
+            
+        if last_main_message_id is not None:
+            try:
+                # Kirim teks /bc tepat dengan me-reply pesan utama yang sudah dikunci
+                bot.send_message(
+                    chat_id=message.chat.id,
+                    text="/bc",
+                    reply_to_message_id=last_main_message_id
+                )
+                # Hapus huruf 'p' yang lu ketik biar saluran tetap rapi dan bersih
+                bot.delete_message(message.chat.id, message.message_id)
+            except Exception as e:
+                print(f"Gagal memproses auto-reply /bc: {e}")
+        return # Keluar dari fungsi agar tidak memicu error perintah di bawah
+
+    # ─── 1. PERINTAH UMUM (Bisa diakses siapapun di grup) ───
     if msg_lower == "pot":
         return bot.reply_to(message, generate_bracket_text())
     elif msg_lower == "pay":
@@ -128,7 +158,7 @@ def handle_text(message):
     elif msg_lower == "rules":
         return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {data['rules_link']}")
 
-    # 2. PERINTAH KHUSUS SUPER ADMIN ONLY (Cuma Lu/Rasya yang bisa pake)
+    # ─── 2. PERINTAH KHUSUS SUPER ADMIN ONLY (Cuma Lu/Rasya yang bisa pake) ───
     if msg_lower.startswith("addowner "):
         if user_id != SUPER_ADMIN_ID:
             return bot.reply_to(message, "❌ Perintah ini cuma bisa dipake sama Developer utama (Rasya) cok!")
@@ -163,7 +193,7 @@ def handle_text(message):
         list_id = "\n".join([f"├ `{oid}`" for oid in data["owners"]])
         return bot.reply_to(message, f"👑 *DAFTAR OWNER AKTIF*:\n├ `{SUPER_ADMIN_ID}` (Dev Utama)\n{list_id or '├ Gak ada owner tambahan'}", parse_mode="Markdown")
 
-    # 3. PERINTAH KHUSUS OWNER (Lu + Pembeli Lu yang udah di-addowner)
+    # ─── 3. PERINTAH KHUSUS OWNER (Lu + Pembeli Lu yang udah di-addowner) ───
     if not is_authorized_owner(message):
         if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win", "clear"] or msg_lower.startswith(("settitle ", "setowner ", "setpay ", "setrules ")):
             return bot.reply_to(message, "❌ Cuma owner yang bisa pake fitur ini cok!!")
@@ -260,4 +290,4 @@ def handle_text(message):
 
 print("Bot aktif...")
 bot.infinity_polling()
-    
+        
