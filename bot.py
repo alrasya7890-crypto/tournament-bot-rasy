@@ -47,41 +47,40 @@ def get_wib_time():
     day_name = days[wib_now.weekday()]
     return wib_now.strftime(f"{day_name}, %d-%m-%Y %H:%M WIB")
 
-# Fungsi untuk generate tampilan bracket estetik FT CS RASY
+# Fungsi untuk generate tampilan bracket estetik FT CS RASY (Diperbaiki anti-mencong)
 def generate_bracket_text():
     semi = data["semi"]
     final = data["final"]
     winner = data["winner"]
     last_update = data.get("last_update", "Belum pernah diupdate")
     
-    text = f"""╔══════════════════════════╗
-║ 🏆  『 **DONE OPEN FT CS RASY** 』  🏆 ║
-╚══════════════════════════╝
+    text = f"""🏆  DONE OPEN FT CS RASY  🏆
+━━━━━━━━━━━━━━━━━━━━
 
-🕒 **WAKTU UPDATE**
-├ {last_update}
+🕒 WAKTU UPDATE
+└ {last_update}
 
-👑 **OPEN BY**
-├ @rrassyaaaa
+👑 OPEN BY
+└ @rrassyaaaa
 
-──────────────────────
-📊 **BRACKET TURNAMEN**
-──────────────────────
+━━━━━━━━━━━━━━━━━━━━
+📊 BRACKET TURNAMEN
+━━━━━━━━━━━━━━━━━━━━
 
-🔴 **SEMI FINAL**
+🔴 SEMI FINAL
 1️⃣ {semi[0] or "?"}  vs  {semi[1] or "?"}
 2️⃣ {semi[2] or "?"}  vs  {semi[3] or "?"}
 
-🔥 **FINAL**
+🔥 FINAL
 🏆 {final[0] or "?"}  vs  {final[1] or "?"}
 
-──────────────────────
+━━━━━━━━━━━━━━━━━━━━
 
-🏅 **PEMENANG**
+🏅 PEMENANG
 👑  【 {winner or "?"} 】
 
-╚══════════════════════════╝
-*by @rrassyaaaa*"""
+━━━━━━━━━━━━━━━━━━━━
+by @rrassyaaaa"""
     return text
 
 # ========== WELCOME CHAT MEMBER ==========
@@ -102,7 +101,7 @@ def handle_text(message):
     
     # 1. PERINTAH UMUM (Bisa diakses siapapun)
     if msg_text == "pot":
-        return bot.reply_to(message, generate_bracket_text(), parse_mode="Markdown")
+        return bot.reply_to(message, generate_bracket_text())
     elif msg_text == "pay":
         return bot.reply_to(message, "𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : https://t.me/+r-dDf3CxAHgzNGVl")
     elif msg_text == "rules":
@@ -128,7 +127,7 @@ def handle_text(message):
             "last_update": get_wib_time()
         }
         save(data)
-        return bot.reply_to(message, "✅ **Bracket turnamen berhasil di-reset total jadi kosong, Sya!**")
+        return bot.reply_to(message, "✅ Bracket turnamen berhasil di-reset total jadi kosong, Sya!")
 
     # Jalankan update data berdasarkan input owner
     name = get_player_name(message.reply_to_message)
@@ -139,47 +138,48 @@ def handle_text(message):
         save(data)
         p1 = data["semi"][0] or "?"
         p2 = data["semi"][1] or "?"
-        bot.reply_to(message, f"🏆 **POT 1:** {p1} vs {p2}")
+        bot.reply_to(message, f"🏆 POT 1: {p1} vs {p2}")
 
     elif msg_text == "d2":
         data["semi"][1] = name
         save(data)
         p1 = data["semi"][0] or "?"
         p2 = data["semi"][1] or "?"
-        bot.reply_to(message, f"🏆 **POT 1:** {p1} vs {p2}")
+        bot.reply_to(message, f"🏆 POT 1: {p1} vs {p2}")
 
     elif msg_text == "d3":
         data["semi"][2] = name
         save(data)
         p3 = data["semi"][2] or "?"
         p4 = data["semi"][3] or "?"
-        bot.reply_to(message, f"🏆 **POT 2:** {p3} vs {p4}")
+        bot.reply_to(message, f"🏆 POT 2: {p3} vs {p4}")
 
     elif msg_text == "d4":
         data["semi"][3] = name
         save(data)
         p3 = data["semi"][2] or "?"
         p4 = data["semi"][3] or "?"
-        bot.reply_to(message, f"🏆 **POT 2:** {p3} vs {p4}")
+        bot.reply_to(message, f"🏆 POT 2: {p3} vs {p4}")
 
     elif msg_text == "f1":
         data["final"][0] = name
         save(data)
         f1_p = data["final"][0] or "?"
         f2_p = data["final"][1] or "?"
-        bot.reply_to(message, f"🔥 **FINAL:** {f1_p} vs {f2_p}")
+        bot.reply_to(message, f"🔥 FINAL: {f1_p} vs {f2_p}")
 
     elif msg_text == "f2":
         data["final"][1] = name
         save(data)
         f1_p = data["final"][0] or "?"
         f2_p = data["final"][1] or "?"
-        bot.reply_to(message, f"🔥 **FINAL:** {f1_p} vs {f2_p}")
+        bot.reply_to(message, f"🔥 FINAL: {f1_p} vs {f2_p}")
 
     elif msg_text == "win":
         data["winner"] = name
         save(data)
-        bot.reply_to(message, f"👑 **PEMENANG FT CS RASY MALAM INI:** {name} !! 🔥")
+        bot.reply_to(message, f"👑 PEMENANG FT CS RASY MALAM INI: {name} !! 🔥")
 
 print("Bot aktif...")
 bot.infinity_polling()
+    
