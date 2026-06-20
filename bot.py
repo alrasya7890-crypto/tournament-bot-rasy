@@ -107,7 +107,7 @@ def welcome(message):
     for user in message.new_chat_members:
         bot.send_message(
             message.chat.id,
-            f"👋 Welcome ngentod {user.first_name}\nStay cokkk fastt inii 🔥"
+            f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥"
         )
 
 # ========== HANDLER SEMUA PERINTAH BERBASIS TEKS (TANPA GARIS MIRING) ==========
