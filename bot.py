@@ -88,10 +88,16 @@ def welcome(message):
     for user in message.new_chat_members:
         bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
 
-@bot.message_handler(func=lambda message: True)
+# Menambahkan content_types agar bot tidak crash saat menerima foto/stiker/media lain
+@bot.message_handler(content_types=['text', 'photo', 'sticker', 'video', 'document', 'animation'])
 def handle_text(message):
     global data
-    msg_text = message.text.strip() if message.text else ""
+    
+    # Jaga-jaga kalau isi pesan tidak ada teksnya (misal cuma kirim foto/stiker)
+    if not message.text:
+        return 
+
+    msg_text = message.text.strip()
     msg_lower = msg_text.lower()
     user_id = message.from_user.id if message.from_user else 0
     
@@ -100,17 +106,30 @@ def handle_text(message):
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {data['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {data['rules_link']}")
 
-    # Perintah Owner
+    # Perintah Owner Utama (Rasya)
     if msg_lower.startswith(("addowner ", "delowner ")) or msg_lower == "listowner":
         if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Cuma Rasya yang bisa pake ini!")
+        
         if msg_lower.startswith("addowner "):
-            tid = int(msg_text.split()[1])
-            if tid not in data["owners"]: data["owners"].append(tid); save(data)
-            return bot.reply_to(message, "✅ Sukses!")
+            try:
+                parts = msg_text.split()
+                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: addowner 123456")
+                tid = int(parts[1])
+                if tid not in data["owners"]: data["owners"].append(tid); save(data)
+                return bot.reply_to(message, "✅ Sukses menambah owner!")
+            except ValueError:
+                return bot.reply_to(message, "❌ ID harus berupa angka cok!")
+                
         if msg_lower.startswith("delowner "):
-            tid = int(msg_text.split()[1])
-            if tid in data["owners"]: data["owners"].remove(tid); save(data)
-            return bot.reply_to(message, "❌ Akses dicabut!")
+            try:
+                parts = msg_text.split()
+                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: delowner 123456")
+                tid = int(parts[1])
+                if tid in data["owners"]: data["owners"].remove(tid); save(data)
+                return bot.reply_to(message, "❌ Akses dicabut!")
+            except ValueError:
+                return bot.reply_to(message, "❌ ID harus berupa angka cok!")
+                
         return bot.reply_to(message, f"👑 *OWNERS*:\n├ `{SUPER_ADMIN_ID}`\n" + "\n".join([f"├ `{oid}`" for oid in data["owners"]]), parse_mode="Markdown")
 
     if not is_authorized_owner(message): return
@@ -144,3 +163,4 @@ def handle_text(message):
 
 print("Bot aktif...")
 bot.infinity_polling()
+                
