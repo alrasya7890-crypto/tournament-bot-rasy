@@ -47,18 +47,13 @@ db = load()
 
 # Ambil settingan milik owner yang ada di dalam grup tersebut
 def get_group_owner_settings(chat_id):
-    # Cari tahu siapa aja admin/owner di grup ini yang terdaftar sebagai pembeli berlisensi
     str_chat_id = str(chat_id)
-    
-    # Default fallback pake data lu (Rasya) kalau belum ada owner yang terdeteksi
     fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
     
     try:
-        # Ambil daftar semua admin di grup chat tersebut
         admins = bot.get_chat_administrators(chat_id)
         for admin in admins:
             admin_id_str = str(admin.user.id)
-            # Jika ada admin grup yang merupakan pembeli resmi bot lu
             if admin_id_str in db["owner_settings"]:
                 return db["owner_settings"][admin_id_str]
     except:
@@ -83,23 +78,51 @@ def handle_text(message):
     msg_text = message.text.strip()
     msg_lower = msg_text.lower()
     
-    # Pastikan data bracket untuk grup ini sudah terinisialisasi
     if str_chat_id not in db["brackets"]:
         db["brackets"][str_chat_id] = get_default_bracket_data()
         save(db)
 
-    # ─── A. PRIVATE CHAT ROOM (Tempat Owner Setting Link & Profile Sekali Seumur Hidup) ───
+    # ─── A. PRIVATE CHAT ROOM (PC BOT) ───
     if message.chat.type == "private":
-        # Validasi: Cuma lu (Dev) atau orang yang sudah lu addpembeli yang bisa setting bot lewat PC
         if user_id != SUPER_ADMIN_ID and user_id not in db["pembeli_list"]:
             return bot.reply_to(message, "❌ Lu belum punya lisensi pembeli. Hubungi Rasya buat sewa bot! 😉")
 
-        # Inisialisasi data settingan jika baru pertama kali PC bot
         if str_user_id not in db["owner_settings"]:
             username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
             db["owner_settings"][str_user_id] = get_default_owner_settings(user_id, username)
             save(db)
 
+        # Cek perintah manajemen pembeli global (Khusus Rasya)
+        if msg_lower.startswith(("addpembeli", "delpembeli")) or msg_lower == "listpembeli":
+            if user_id != SUPER_ADMIN_ID: 
+                return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi global!")
+            
+            parts = msg_text.split()
+            
+            if msg_lower.startswith("addpembeli"):
+                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: addpembeli 123456")
+                try:
+                    tid = int(parts[1])
+                    if tid not in db["pembeli_list"]: db["pembeli_list"].append(tid)
+                    if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
+                    save(db)
+                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
+                except ValueError: 
+                    return bot.reply_to(message, "❌ ID harus berupa angka asli, Sya!")
+                    
+            if msg_lower.startswith("delpembeli"):
+                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: delpembeli 123456")
+                try:
+                    tid = int(parts[1])
+                    if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
+                    save(db)
+                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
+                except ValueError: 
+                    return bot.reply_to(message, "❌ ID harus berupa angka asli, Sya!")
+                    
+            return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
+
+        # Fitur ganti profile harian via PC
         if msg_lower.startswith("set"):
             parts = msg_text.split(" ", 1)
             if len(parts) > 1:
@@ -111,34 +134,12 @@ def handle_text(message):
                 save(db)
                 return bot.reply_to(message, f"✅ Sukses update settingan profile PC lu: {cmd}")
 
-        # Perintah khusus lu (Rasya) sebagai Developer untuk menambah pembeli berlisensi
-        if msg_lower.startswith(("addpembeli ", "delpembeli ")) or msg_lower == "listpembeli":
-            if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi global!")
-            if msg_lower.startswith("addpembeli "):
-                try:
-                    tid = int(msg_text.split()[1])
-                    if tid not in db["pembeli_list"]: db["pembeli_list"].append(tid)
-                    if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
-                    save(db)
-                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
-                except: return bot.reply_to(message, "Format: addpembeli 123456")
-            if msg_lower.startswith("delpembeli "):
-                try:
-                    tid = int(msg_text.split()[1])
-                    if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
-                    save(db)
-                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
-                except: return bot.reply_to(message, "Format: delpembeli 123456")
-            return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
-
         return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini biar otomatis kepasang di grup mana aja:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
 
-    # ─── B. GROUP CHAT ROOM (Tempat Pertandingan & Update Bracket) ───
-    # Tarik settingan milik admin grup yang berlisensi pembeli
+    # ─── B. GROUP CHAT ROOM ───
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
-    # 1. Perintah Umum Member
     if msg_lower == "pot":
         semi, final, winner = bdata["semi"], bdata["final"], bdata["winner"]
         text = f"""🏆  {oset['title']}  🏆
@@ -169,7 +170,6 @@ by {oset['open_by']}"""
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
-    # 2. Hak Akses Fitur Bracket (Hanya jika si pengirim adalah admin berlisensi pembeli / lu / pemilik grup)
     is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
     if not is_pembeli: return
 
@@ -181,11 +181,9 @@ by {oset['open_by']}"""
     if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win"]:
         if not message.reply_to_message: return bot.reply_to(message, "❌ Reply player dulu!")
         
-        # Mengambil nama pemain (username / nama depan)
         p_user = message.reply_to_message.from_user
         name = f"@{p_user.username}" if p_user.username else p_user.first_name
         
-        # Update Waktu WIB
         utc_now = datetime.utcnow()
         wib_now = utc_now + timedelta(hours=7)
         days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
@@ -203,4 +201,4 @@ by {oset['open_by']}"""
 
 print("Bot aktif...")
 bot.infinity_polling()
-        
+                    
