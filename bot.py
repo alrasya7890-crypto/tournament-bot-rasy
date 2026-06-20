@@ -5,10 +5,28 @@ from datetime import datetime, timedelta
 
 # Mengambil variabel dari Railway
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-SUPER_ADMIN_ID = int(os.getenv("OWNER_ID"))
+SUPER_ADMIN_ID = int(os.getenv("OWNER_ID")) # ID Lu (Rasya) sebagai Developer Utama
 
 bot = telebot.TeleBot(TOKEN)
 DATA_FILE = "data.json"
+
+# Template data default khusus untuk setiap owner/pembeli baru
+def get_default_owner_settings(user_id, username="@"):
+    return {
+        "title": "DONE OPEN FT CS RASY",
+        "open_by": username,
+        "pay_link": "https://t.me/+r-dDf3CxAHgzNGVl",
+        "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",
+    }
+
+# Template data bracket khusus per grup chat
+def get_default_bracket_data():
+    return {
+        "semi": [None, None, None, None],
+        "final": [None, None],
+        "winner": None,
+        "last_update": "Belum pernah diupdate"
+    }
 
 def load():
     try:
@@ -16,56 +34,120 @@ def load():
             return json.load(f)
     except:
         return {
-            "semi": [None, None, None, None],
-            "final": [None, None],
-            "winner": None,
-            "last_update": "Belum pernah diupdate",
-            "title": "DONE OPEN FT CS RASY",
-            "open_by": "@rrassyaaaa",
-            "pay_link": "https://t.me/+r-dDf3CxAHgzNGVl",
-            "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",
-            "owners": [] 
+            "pembeli_list": [],      # Daftar ID Telegram orang yang beli lisensi ke lu
+            "owner_settings": {},    # Menyimpan settingan harian (pay, rules, title) per User ID
+            "brackets": {}           # Menyimpan data bracket turnamen per Chat ID grup
         }
 
 def save(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-data = load()
+db = load()
 
-# Setup default keys
-if "title" not in data: data["title"] = "DONE OPEN FT CS RASY"
-if "open_by" not in data: data["open_by"] = "@rrassyaaaa"
-if "pay_link" not in data: data["pay_link"] = "https://t.me/+r-dDf3CxAHgzNGVl"
-if "rules_link" not in data: data["rules_link"] = "https://t.me/+LHr8jRVQHsszZGJl"
-if "owners" not in data: data["owners"] = []
-save(data)
+# Ambil settingan milik owner yang ada di dalam grup tersebut
+def get_group_owner_settings(chat_id):
+    # Cari tahu siapa aja admin/owner di grup ini yang terdaftar sebagai pembeli berlisensi
+    str_chat_id = str(chat_id)
+    
+    # Default fallback pake data lu (Rasya) kalau belum ada owner yang terdeteksi
+    fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
+    
+    try:
+        # Ambil daftar semua admin di grup chat tersebut
+        admins = bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            admin_id_str = str(admin.user.id)
+            # Jika ada admin grup yang merupakan pembeli resmi bot lu
+            if admin_id_str in db["owner_settings"]:
+                return db["owner_settings"][admin_id_str]
+    except:
+        pass
+        
+    return fallback_settings
 
-def is_authorized_owner(message):
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome(message):
+    for user in message.new_chat_members:
+        bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
+
+@bot.message_handler(content_types=['text', 'photo', 'sticker', 'video', 'document', 'animation'])
+def handle_text(message):
+    global db
+    if not message.text: return 
+
+    chat_id = message.chat.id
+    str_chat_id = str(chat_id)
     user_id = message.from_user.id if message.from_user else 0
-    return user_id == SUPER_ADMIN_ID or user_id in data.get("owners", [])
+    str_user_id = str(user_id)
+    msg_text = message.text.strip()
+    msg_lower = msg_text.lower()
+    
+    # Pastikan data bracket untuk grup ini sudah terinisialisasi
+    if str_chat_id not in db["brackets"]:
+        db["brackets"][str_chat_id] = get_default_bracket_data()
+        save(db)
 
-def get_player_name(reply_message):
-    user = reply_message.from_user
-    if user.username:
-        return f"@{user.username}"
-    return user.first_name
+    # ─── A. PRIVATE CHAT ROOM (Tempat Owner Setting Link & Profile Sekali Seumur Hidup) ───
+    if message.chat.type == "private":
+        # Validasi: Cuma lu (Dev) atau orang yang sudah lu addpembeli yang bisa setting bot lewat PC
+        if user_id != SUPER_ADMIN_ID and user_id not in db["pembeli_list"]:
+            return bot.reply_to(message, "❌ Lu belum punya lisensi pembeli. Hubungi Rasya buat sewa bot! 😉")
 
-def get_wib_time():
-    utc_now = datetime.utcnow()
-    wib_now = utc_now + timedelta(hours=7)
-    days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
-    return wib_now.strftime(f"{days[wib_now.weekday()]}, %d-%m-%Y %H:%M WIB")
+        # Inisialisasi data settingan jika baru pertama kali PC bot
+        if str_user_id not in db["owner_settings"]:
+            username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+            db["owner_settings"][str_user_id] = get_default_owner_settings(user_id, username)
+            save(db)
 
-def generate_bracket_text():
-    semi, final, winner = data["semi"], data["final"], data["winner"]
-    return f"""🏆  {data['title']}  🏆
+        if msg_lower.startswith("set"):
+            parts = msg_text.split(" ", 1)
+            if len(parts) > 1:
+                cmd, val = parts[0], parts[1]
+                if cmd == "settitle": db["owner_settings"][str_user_id]["title"] = val
+                elif cmd == "setowner": db["owner_settings"][str_user_id]["open_by"] = val
+                elif cmd == "setpay": db["owner_settings"][str_user_id]["pay_link"] = val
+                elif cmd == "setrules": db["owner_settings"][str_user_id]["rules_link"] = val
+                save(db)
+                return bot.reply_to(message, f"✅ Sukses update settingan profile PC lu: {cmd}")
+
+        # Perintah khusus lu (Rasya) sebagai Developer untuk menambah pembeli berlisensi
+        if msg_lower.startswith(("addpembeli ", "delpembeli ")) or msg_lower == "listpembeli":
+            if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi global!")
+            if msg_lower.startswith("addpembeli "):
+                try:
+                    tid = int(msg_text.split()[1])
+                    if tid not in db["pembeli_list"]: db["pembeli_list"].append(tid)
+                    if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
+                    save(db)
+                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
+                except: return bot.reply_to(message, "Format: addpembeli 123456")
+            if msg_lower.startswith("delpembeli "):
+                try:
+                    tid = int(msg_text.split()[1])
+                    if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
+                    save(db)
+                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
+                except: return bot.reply_to(message, "Format: delpembeli 123456")
+            return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
+
+        return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini biar otomatis kepasang di grup mana aja:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
+
+    # ─── B. GROUP CHAT ROOM (Tempat Pertandingan & Update Bracket) ───
+    # Tarik settingan milik admin grup yang berlisensi pembeli
+    oset = get_group_owner_settings(chat_id)
+    bdata = db["brackets"][str_chat_id]
+
+    # 1. Perintah Umum Member
+    if msg_lower == "pot":
+        semi, final, winner = bdata["semi"], bdata["final"], bdata["winner"]
+        text = f"""🏆  {oset['title']}  🏆
 ━━━━━━━━━━━━━━━━━━━━
 🕒 WAKTU UPDATE
-└ {data.get('last_update', 'Belum pernah diupdate')}
+└ {bdata.get('last_update', 'Belum pernah diupdate')}
 
 👑 OPEN BY
-└ {data['open_by']}
+└ {oset['open_by']}
 
 ━━━━━━━━━━━━━━━━━━━━
 📊 BRACKET TURNAMEN
@@ -81,86 +163,44 @@ def generate_bracket_text():
 🏅 PEMENANG
 👑  【 {winner or "?"} 】
 ━━━━━━━━━━━━━━━━━━━━
-by {data['open_by']}"""
+by {oset['open_by']}"""
+        return bot.reply_to(message, text)
 
-@bot.message_handler(content_types=['new_chat_members'])
-def welcome(message):
-    for user in message.new_chat_members:
-        bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
+    if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
+    if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
-# Menambahkan content_types agar bot tidak crash saat menerima foto/stiker/media lain
-@bot.message_handler(content_types=['text', 'photo', 'sticker', 'video', 'document', 'animation'])
-def handle_text(message):
-    global data
-    
-    # Jaga-jaga kalau isi pesan tidak ada teksnya (misal cuma kirim foto/stiker)
-    if not message.text:
-        return 
-
-    msg_text = message.text.strip()
-    msg_lower = msg_text.lower()
-    user_id = message.from_user.id if message.from_user else 0
-    
-    # Perintah Umum
-    if msg_lower == "pot": return bot.reply_to(message, generate_bracket_text())
-    if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {data['pay_link']}")
-    if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {data['rules_link']}")
-
-    # Perintah Owner Utama (Rasya)
-    if msg_lower.startswith(("addowner ", "delowner ")) or msg_lower == "listowner":
-        if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Cuma Rasya yang bisa pake ini!")
-        
-        if msg_lower.startswith("addowner "):
-            try:
-                parts = msg_text.split()
-                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: addowner 123456")
-                tid = int(parts[1])
-                if tid not in data["owners"]: data["owners"].append(tid); save(data)
-                return bot.reply_to(message, "✅ Sukses menambah owner!")
-            except ValueError:
-                return bot.reply_to(message, "❌ ID harus berupa angka cok!")
-                
-        if msg_lower.startswith("delowner "):
-            try:
-                parts = msg_text.split()
-                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: delowner 123456")
-                tid = int(parts[1])
-                if tid in data["owners"]: data["owners"].remove(tid); save(data)
-                return bot.reply_to(message, "❌ Akses dicabut!")
-            except ValueError:
-                return bot.reply_to(message, "❌ ID harus berupa angka cok!")
-                
-        return bot.reply_to(message, f"👑 *OWNERS*:\n├ `{SUPER_ADMIN_ID}`\n" + "\n".join([f"├ `{oid}`" for oid in data["owners"]]), parse_mode="Markdown")
-
-    if not is_authorized_owner(message): return
-
-    if msg_lower.startswith("set"):
-        parts = msg_text.split(" ", 1)
-        if len(parts) > 1:
-            cmd, val = parts[0], parts[1]
-            if cmd == "settitle": data["title"] = val
-            elif cmd == "setowner": data["open_by"] = val
-            elif cmd == "setpay": data["pay_link"] = val
-            elif cmd == "setrules": data["rules_link"] = val
-            save(data)
-            return bot.reply_to(message, f"✅ Updated: {cmd}")
+    # 2. Hak Akses Fitur Bracket (Hanya jika si pengirim adalah admin berlisensi pembeli / lu / pemilik grup)
+    is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
+    if not is_pembeli: return
 
     if msg_lower == "clear":
-        data["semi"] = [None]*4; data["final"] = [None]*2; data["winner"] = None; data["last_update"] = get_wib_time(); save(data)
-        return bot.reply_to(message, "✅ Reset!")
+        db["brackets"][str_chat_id] = get_default_bracket_data()
+        save(db)
+        return bot.reply_to(message, "✅ Bracket grup ini berhasil dikosongkan!")
 
     if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win"]:
         if not message.reply_to_message: return bot.reply_to(message, "❌ Reply player dulu!")
-        name = get_player_name(message.reply_to_message)
-        data["last_update"] = get_wib_time()
+        
+        # Mengambil nama pemain (username / nama depan)
+        p_user = message.reply_to_message.from_user
+        name = f"@{p_user.username}" if p_user.username else p_user.first_name
+        
+        # Update Waktu WIB
+        utc_now = datetime.utcnow()
+        wib_now = utc_now + timedelta(hours=7)
+        days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        bdata["last_update"] = wib_now.strftime(f"{days[wib_now.weekday()]}! %d-%m-%Y %H:%M WIB")
+        
         idx = {"d1": 0, "d2": 1, "d3": 2, "d4": 3}
-        if msg_lower in idx: data["semi"][idx[msg_lower]] = name
-        elif msg_lower == "f1": data["final"][0] = name
-        elif msg_lower == "f2": data["final"][1] = name
-        elif msg_lower == "win": data["winner"] = name
-        save(data)
-        bot.reply_to(message, "✅ Data diupdate!")
+        if msg_lower in idx: bdata["semi"][idx[msg_lower]] = name
+        elif msg_lower == "f1": bdata["final"][0] = name
+        elif msg_lower == "f2": bdata["final"][1] = name
+        elif msg_lower == "win": bdata["winner"] = name
+        
+        db["brackets"][str_chat_id] = bdata
+        save(db)
+        bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
 
 print("Bot aktif...")
 bot.infinity_polling()
-                
+        
