@@ -5,12 +5,16 @@ from datetime import datetime, timedelta
 
 # Mengambil variabel dari Railway
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-SUPER_ADMIN_ID = int(os.getenv("OWNER_ID")) # ID Lu (Rasya) sebagai Developer Utama
+OWNER_ID_ENV = os.getenv("OWNER_ID")
+SUPER_ADMIN_ID = int(OWNER_ID_ENV) if (OWNER_ID_ENV and OWNER_ID_ENV.isdigit()) else 0
 
 bot = telebot.TeleBot(TOKEN)
 DATA_FILE = "data.json"
 
-# Template data default khusus untuk setiap owner/pembeli baru
+# 🔥 JAMU ANTI-TIMEOUT: Set global timeout di apihelper biar ga crash get_updates di Railway
+telebot.apihelper.CONNECT_TIMEOUT = 90
+telebot.apihelper.READ_TIMEOUT = 90
+
 def get_default_owner_settings(user_id, username="@"):
     return {
         "title": "DONE OPEN FT CS RASY",
@@ -19,7 +23,6 @@ def get_default_owner_settings(user_id, username="@"):
         "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",
     }
 
-# Template data bracket khusus per grup chat
 def get_default_bracket_data():
     return {
         "semi": [None, None, None, None],
@@ -34,9 +37,9 @@ def load():
             return json.load(f)
     except:
         return {
-            "pembeli_list": [],      # Daftar ID Telegram orang yang beli lisensi ke lu
-            "owner_settings": {},    # Menyimpan settingan harian (pay, rules, title) per User ID
-            "brackets": {}           # Menyimpan data bracket turnamen per Chat ID grup
+            "pembeli_list": [],      
+            "owner_settings": {},    
+            "brackets": {}           
         }
 
 def save(data):
@@ -45,30 +48,34 @@ def save(data):
 
 db = load()
 
-# Ambil settingan milik owner yang ada di dalam grup tersebut
 def get_group_owner_settings(chat_id):
-    str_chat_id = str(chat_id)
     fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
-    
     try:
         admins = bot.get_chat_administrators(chat_id)
         for admin in admins:
             admin_id_str = str(admin.user.id)
-            if admin_id_str in db["owner_settings"]:
+            if admin_id_str in db["pembeli_list"] or admin.user.id == SUPER_ADMIN_ID:
+                if admin_id_str not in db["owner_settings"]:
+                    username = f"@{admin.user.username}" if admin.user.username else admin.user.first_name
+                    db["owner_settings"][admin_id_str] = get_default_owner_settings(admin.user.id, username)
+                    save(db)
                 return db["owner_settings"][admin_id_str]
     except:
         pass
         
     return fallback_settings
 
+# ─── 1. HANDLER WELCOME MESSAGE ───
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
         bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
 
+# ─── 2. HANDLER UTAMA CHAT & PERINTAH ───
 @bot.message_handler(content_types=['text', 'photo', 'sticker', 'video', 'document', 'animation'])
 def handle_text(message):
     global db
+    
     if not message.text: return 
 
     chat_id = message.chat.id
@@ -82,7 +89,7 @@ def handle_text(message):
         db["brackets"][str_chat_id] = get_default_bracket_data()
         save(db)
 
-    # ─── A. PRIVATE CHAT ROOM (PC BOT) ───
+    # ─── A. ROOM PRIVATE CHAT (PC BOT) ───
     if message.chat.type == "private":
         if user_id != SUPER_ADMIN_ID and user_id not in db["pembeli_list"]:
             return bot.reply_to(message, "❌ Lu belum punya lisensi pembeli. Hubungi Rasya buat sewa bot! 😉")
@@ -92,13 +99,11 @@ def handle_text(message):
             db["owner_settings"][str_user_id] = get_default_owner_settings(user_id, username)
             save(db)
 
-        # Cek perintah manajemen pembeli global (Khusus Rasya)
         if msg_lower.startswith(("addpembeli", "delpembeli")) or msg_lower == "listpembeli":
             if user_id != SUPER_ADMIN_ID: 
                 return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi global!")
             
             parts = msg_text.split()
-            
             if msg_lower.startswith("addpembeli"):
                 if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: addpembeli 123456")
                 try:
@@ -107,8 +112,7 @@ def handle_text(message):
                     if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
                     save(db)
                     return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
-                except ValueError: 
-                    return bot.reply_to(message, "❌ ID harus berupa angka asli, Sya!")
+                except ValueError: return bot.reply_to(message, "❌ ID harus angka, Sya!")
                     
             if msg_lower.startswith("delpembeli"):
                 if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: delpembeli 123456")
@@ -117,12 +121,10 @@ def handle_text(message):
                     if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
                     save(db)
                     return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
-                except ValueError: 
-                    return bot.reply_to(message, "❌ ID harus berupa angka asli, Sya!")
+                except ValueError: return bot.reply_to(message, "❌ ID harus angka, Sya!")
                     
             return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
 
-        # Fitur ganti profile harian via PC
         if msg_lower.startswith("set"):
             parts = msg_text.split(" ", 1)
             if len(parts) > 1:
@@ -134,9 +136,9 @@ def handle_text(message):
                 save(db)
                 return bot.reply_to(message, f"✅ Sukses update settingan profile PC lu: {cmd}")
 
-        return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini biar otomatis kepasang di grup mana aja:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
+        return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
 
-    # ─── B. GROUP CHAT ROOM ───
+    # ─── B. ROOM GRUP CHAT ───
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
@@ -197,8 +199,17 @@ by {oset['open_by']}"""
         
         db["brackets"][str_chat_id] = bdata
         save(db)
-        bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
+        
+        semi = bdata["semi"]
+        if msg_lower in ["d1", "d2"] and semi[0] and semi[1]:
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 1 READY**:\n👉 {semi[0]}  vs  {semi[1]}")
+        elif msg_lower in ["d3", "d4"] and semi[2] and semi[3]:
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 2 READY**:\n👉 {semi[2]}  vs  {semi[3]}")
+        else:
+            bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
 
-print("Bot aktif...")
-bot.infinity_polling()
+if __name__ == "__main__":
+    print("Bot aktif...")
+    # Ditambah long_polling_timeout 60 detik biar stabil di internal apihelper
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
                     
