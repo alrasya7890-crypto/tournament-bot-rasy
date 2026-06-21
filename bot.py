@@ -24,8 +24,7 @@ def get_default_bracket_data():
         "semi": [None, None, None, None],
         "final": [None, None],
         "winner": None,
-        "last_update": "Belum pernah diupdate",
-        "current_owner_id": None  # Menyimpan ID owner aktif di grup ini
+        "last_update": "Belum pernah diupdate"
     }
 
 def load():
@@ -45,30 +44,34 @@ def save(data):
 
 db = load()
 
-# Ambil settingan owner berdasarkan siapa yang aktif di grup tersebut
+# Ambil settingan owner berdasarkan siapa admin grup yang terdaftar sebagai pembeli
 def get_group_owner_settings(chat_id):
     str_chat_id = str(chat_id)
     fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
     
-    if str_chat_id in db["brackets"]:
-        active_owner = db["brackets"][str_chat_id].get("current_owner_id")
-        if active_owner and str(active_owner) in db["owner_settings"]:
-            return db["owner_settings"][str(active_owner)]
-            
+    try:
+        admins = bot.get_chat_administrators(chat_id)
+        for admin in admins:
+            admin_id_str = str(admin.user.id)
+            if admin_id_str in db["owner_settings"]:
+                return db["owner_settings"][admin_id_str]
+    except:
+        pass
+        
     return fallback_settings
 
-# ─── 1. HANDLER WELCOME MESSAGE (DIPISAH BIAR WORK) ───
+# ─── 1. HANDLER WELCOME MESSAGE ───
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
     for user in message.new_chat_members:
-        bot.send_message(message.chat.id, f"👋 Welcome sayang {user.first_name}\nstay cokkk fastt inii 🔥")
+        bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
 
 # ─── 2. HANDLER UTAMA CHAT & PERINTAH ───
 @bot.message_handler(content_types=['text', 'photo', 'sticker', 'video', 'document', 'animation'])
 def handle_text(message):
     global db
     
-    # Amankan jika tidak ada teks (stiker/foto) agar tidak memicu NoneType error
+    # Bypass protection dari NoneType error jika chat ga ada teksnya (misal kirim media murni)
     if not message.text: return 
 
     chat_id = message.chat.id
@@ -132,15 +135,10 @@ def handle_text(message):
         return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
 
     # ─── B. ROOM GRUP CHAT ───
-    # Jika yang ngetik perintah adalah pembeli resmi atau super admin, klaim grup ini milik dia
-    is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
-    if is_pembeli and db["brackets"][str_chat_id]["current_owner_id"] != user_id:
-        db["brackets"][str_chat_id]["current_owner_id"] = user_id
-        save(db)
-
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
+    # Jalur Pintas Umum: Siapa pun bisa ketik perintah ini dan PASTI langsung merespon!
     if msg_lower == "pot":
         semi, final, winner = bdata["semi"], bdata["final"], bdata["winner"]
         text = f"""🏆  {oset['title']}  🏆
@@ -171,16 +169,16 @@ by {oset['open_by']}"""
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
+    # Validasi Admin: Cuma Pembeli Terdaftar atau Lu yang bisa ubah isi bracket dan ketik 'clear'
+    is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
     if not is_pembeli: return
 
     if msg_lower == "clear":
-        active_id = db["brackets"][str_chat_id]["current_owner_id"]
         db["brackets"][str_chat_id] = get_default_bracket_data()
-        db["brackets"][str_chat_id]["current_owner_id"] = active_id
         save(db)
         return bot.reply_to(message, "✅ Bracket grup ini berhasil dikosongkan!")
 
-    # ─── FITUR BRACKET OTOMATIS d1 vs d2 ───
+    # ─── FITUR BRACKET TURNAMEN ───
     if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win"]:
         if not message.reply_to_message: return bot.reply_to(message, "❌ Reply player dulu!")
         
@@ -201,7 +199,7 @@ by {oset['open_by']}"""
         db["brackets"][str_chat_id] = bdata
         save(db)
         
-        # LOGIKA OTOMATIS LANGSUNG MENAMPILKAN d1 VS d2 JIKA DUA-DUANYA SUDAH TERISI
+        # LOGIKA OTOMATIS LANGSUNG MENAMPILKAN d1 VS d2 / d3 VS d4 JIKA SEPASANG SUDAH TERISI
         semi = bdata["semi"]
         if msg_lower in ["d1", "d2"] and semi[0] and semi[1]:
             bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 1 READY**:\n👉 {semi[0]}  vs  {semi[1]}")
@@ -212,3 +210,4 @@ by {oset['open_by']}"""
 
 print("Bot aktif...")
 bot.infinity_polling()
+                                                       
