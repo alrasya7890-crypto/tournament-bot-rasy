@@ -44,16 +44,20 @@ def save(data):
 
 db = load()
 
-# Ambil settingan owner berdasarkan siapa admin grup yang terdaftar sebagai pembeli
+# Ambil settingan owner berdasarkan admin grup, kalau belum terdaftar otomatis dibuatkan default biar ga blank
 def get_group_owner_settings(chat_id):
-    str_chat_id = str(chat_id)
     fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
-    
     try:
         admins = bot.get_chat_administrators(chat_id)
         for admin in admins:
             admin_id_str = str(admin.user.id)
-            if admin_id_str in db["owner_settings"]:
+            # Kalau admin grup ini terdaftar sebagai pembeli premium
+            if admin_id_str in db["pembeli_list"] or admin.user.id == SUPER_ADMIN_ID:
+                # Jika dia belum punya data settingan di database, buatkan defaultnya saat itu juga biar ga eror
+                if admin_id_str not in db["owner_settings"]:
+                    username = f"@{admin.user.username}" if admin.user.username else admin.user.first_name
+                    db["owner_settings"][admin_id_str] = get_default_owner_settings(admin.user.id, username)
+                    save(db)
                 return db["owner_settings"][admin_id_str]
     except:
         pass
@@ -71,7 +75,7 @@ def welcome(message):
 def handle_text(message):
     global db
     
-    # Bypass protection dari NoneType error jika chat ga ada teksnya (misal kirim media murni)
+    # Bypass jika chat ga mengandung teks (misal kirim media/stiker murni) biar ga NoneType error
     if not message.text: return 
 
     chat_id = message.chat.id
@@ -138,7 +142,7 @@ def handle_text(message):
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
-    # Jalur Pintas Umum: Siapa pun bisa ketik perintah ini dan PASTI langsung merespon!
+    # Akses Umum Instan (Pasti Keluar Tanpa Tergantung Input User)
     if msg_lower == "pot":
         semi, final, winner = bdata["semi"], bdata["final"], bdata["winner"]
         text = f"""🏆  {oset['title']}  🏆
@@ -169,7 +173,7 @@ by {oset['open_by']}"""
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
-    # Validasi Admin: Cuma Pembeli Terdaftar atau Lu yang bisa ubah isi bracket dan ketik 'clear'
+    # Validasi Admin Grup
     is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
     if not is_pembeli: return
 
@@ -199,7 +203,7 @@ by {oset['open_by']}"""
         db["brackets"][str_chat_id] = bdata
         save(db)
         
-        # LOGIKA OTOMATIS LANGSUNG MENAMPILKAN d1 VS d2 / d3 VS d4 JIKA SEPASANG SUDAH TERISI
+        # Logika otomatis langsung ngirim notif tanding pas d1 vs d2 / d3 vs d4 keisi
         semi = bdata["semi"]
         if msg_lower in ["d1", "d2"] and semi[0] and semi[1]:
             bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 1 READY**:\n👉 {semi[0]}  vs  {semi[1]}")
@@ -208,6 +212,7 @@ by {oset['open_by']}"""
         else:
             bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
 
-print("Bot aktif...")
-bot.infinity_polling()
-                                                       
+if __name__ == "__main__":
+    print("Bot aktif...")
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            
