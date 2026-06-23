@@ -53,8 +53,9 @@ def get_group_owner_settings(chat_id):
     try:
         admins = bot.get_chat_administrators(chat_id)
         for admin in admins:
-            admin_id_str = str(admin.user.id)
-            if admin_id_str in db["pembeli_list"] or admin.user.id == SUPER_ADMIN_ID:
+            # 🔥 FIX BUG: Pengecekan disamakan menggunakan Integer (Angka murni)
+            if admin.user.id in db["pembeli_list"] or admin.user.id == SUPER_ADMIN_ID:
+                admin_id_str = str(admin.user.id)
                 if admin_id_str not in db["owner_settings"]:
                     username = f"@{admin.user.username}" if admin.user.username else admin.user.first_name
                     db["owner_settings"][admin_id_str] = get_default_owner_settings(admin.user.id, username)
@@ -91,6 +92,7 @@ def handle_text(message):
 
     # ─── A. ROOM PRIVATE CHAT (PC BOT) ───
     if message.chat.type == "private":
+        # 🔥 FIX BUG: Pengecekan di PC diubah agar konsisten mendeteksi Integer murni
         if user_id != SUPER_ADMIN_ID and user_id not in db["pembeli_list"]:
             return bot.reply_to(message, "❌ Lu belum punya lisensi pembeli. Hubungi Rasya buat sewa bot! 😉")
 
@@ -99,30 +101,38 @@ def handle_text(message):
             db["owner_settings"][str_user_id] = get_default_owner_settings(user_id, username)
             save(db)
 
-        if msg_lower.startswith(("addpembeli", "delpembeli")) or msg_lower == "listpembeli":
+        # 🔥 TAMBAH FITUR: Sekarang bisa mendeteksi kata "addlisensi", "dellisensi", dan "listlisensi" juga sebagai alias
+        if msg_lower.startswith(("addpembeli", "delpembeli", "addlisensi", "dellisensi")) or msg_lower in ["listpembeli", "listlisensi"]:
             if user_id != SUPER_ADMIN_ID: 
                 return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi global!")
             
             parts = msg_text.split()
-            if msg_lower.startswith("addpembeli"):
-                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: addpembeli 123456")
+            
+            # Perintah Tambah Lisensi / Pembeli
+            if msg_lower.startswith(("addpembeli", "addlisensi")):
+                if len(parts) < 2: return bot.reply_to(message, f"❌ Format salah. Contoh: {parts[0]} 123456")
                 try:
                     tid = int(parts[1])
-                    if tid not in db["pembeli_list"]: db["pembeli_list"].append(tid)
-                    if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
+                    if tid not in db["pembeli_list"]: 
+                        db["pembeli_list"].append(tid)
+                    if str(tid) not in db["owner_settings"]: 
+                        db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
                     save(db)
-                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
-                except ValueError: return bot.reply_to(message, "❌ ID harus angka, Sya!")
-                    
-            if msg_lower.startswith("delpembeli"):
-                if len(parts) < 2: return bot.reply_to(message, "❌ Format salah. Contoh: delpembeli 123456")
+                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi, Sya!")
+                except ValueError: return bot.reply_to(message, "❌ ID harus angka murni, Sya!")
+            
+            # Perintah Hapus Lisensi / Pembeli        
+            if msg_lower.startswith(("delpembeli", "dellisensi")):
+                if len(parts) < 2: return bot.reply_to(message, f"❌ Format salah. Contoh: {parts[0]} 123456")
                 try:
                     tid = int(parts[1])
-                    if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
+                    if tid in db["pembeli_list"]: 
+                        db["pembeli_list"].remove(tid)
                     save(db)
-                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
-                except ValueError: return bot.reply_to(message, "❌ ID harus angka, Sya!")
-                    
+                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` berhasil dicabut!")
+                except ValueError: return bot.reply_to(message, "❌ ID harus angka murni, Sya!")
+            
+            # Tampilkan list pembeli aktif
             return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
 
         if msg_lower.startswith("set"):
@@ -172,6 +182,7 @@ by {oset['open_by']}"""
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
+    # 🔥 FIX BUG: Validasi di grup disesuaikan agar mengecek tipe data Integer dengan benar
     is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
     if not is_pembeli: return
 
@@ -210,6 +221,5 @@ by {oset['open_by']}"""
 
 if __name__ == "__main__":
     print("Bot aktif...")
-    # Ditambah long_polling_timeout 60 detik biar stabil di internal apihelper
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
-                    
+                                    
