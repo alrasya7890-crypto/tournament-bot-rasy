@@ -127,32 +127,38 @@ async def run_userbot_loop():
 
     jumlah_terkirim = 0
 
-    while auto_spam_aktif:
+        while auto_spam_aktif:
         if datetime.now() >= waktu_selesai:
             print("[Userbot] Waktu 10 menit habis! Auto-shutdown.")
             auto_spam_aktif = False
 
+            # --- GANTI BLOK NOTIF YANG LAMA SAMA INI ---
             try:
                 import requests
+                print(f"[DEBUG] Admin ID yang terdeteksi: {SUPER_ADMIN_ID}") # Biar kita tau ID-nya bener apa nggak
+                
                 notif_text = (
                     f"✅ *SPAM SELESAI OTOMATIS!*\n\n"
                     f"⏱ Durasi: 10 menit penuh\n"
                     f"📨 Total terkirim: {jumlah_terkirim} pesan\n"
                     f"🕐 Selesai pada: {datetime.now().strftime('%H:%M:%S')}"
                 )
-                requests.post(
+                
+                resp = requests.post(
                     f"https://api.telegram.org/bot{TOKEN}/sendMessage",
                     data={
                         "chat_id": SUPER_ADMIN_ID,
                         "text": notif_text,
                         "parse_mode": "Markdown"
                     },
-                    timeout=10
+                    timeout=15
                 )
-                print("[Notif] Notif selesai berhasil dikirim!")
+                print(f"[DEBUG] Respon Telegram: {resp.status_code} - {resp.text}")
             except Exception as e:
-                print(f"[Notif] Gagal kirim notif: {e}")
+                print(f"[Notif] Gagal total! Error: {e}")
+            # -------------------------------------------
             break
+
             
         db = load()
         daftar_bot = db.get("target_bots", [])
