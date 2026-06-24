@@ -160,15 +160,21 @@ async def run_userbot_loop():
                 break
 
             try:
-                if foto_bytes:
+            if foto_bytes:
                     import io
+                    # --- UBAH BAGIAN INI ---
+                    bio = io.BytesIO(foto_bytes)
+                    bio.name = "image.jpg" # Biar Telegram tahu ini file gambar
+                    
                     await client.send_file(
                         bot_username,
-                        file=io.BytesIO(foto_bytes),
+                        file=bio,
                         caption=f"/bc {pesan_bc}" if pesan_bc else "",
-                        force_document=False
+                        force_document=False # Ini biar gak jadi dokumen "unnamed"
                     )
+                    # -----------------------
                     print(f"[Userbot] Sukses kirim FOTO ke {bot_username}")
+                                    
                 else:
                     await client.send_message(bot_username, f"/bc {pesan_bc}")
                     print(f"[Userbot] Sukses kirim TEKS ke {bot_username}")
