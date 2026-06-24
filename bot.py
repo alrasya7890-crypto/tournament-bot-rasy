@@ -127,7 +127,7 @@ async def run_userbot_loop():
 
     jumlah_terkirim = 0
 
-        while auto_spam_aktif:
+    while auto_spam_aktif:
         if datetime.now() >= waktu_selesai:
             print("[Userbot] Waktu 10 menit habis! Auto-shutdown.")
             auto_spam_aktif = False
