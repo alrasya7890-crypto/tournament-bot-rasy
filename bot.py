@@ -113,7 +113,7 @@ async def run_userbot_loop():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.connect()
 
-    waktu_selesai = datetime.now() + timedelta(minutes=10)  # ← DIUBAH: 5 → 10 menit
+    waktu_selesai = datetime.now() + timedelta(minutes=10)
     print(f"[Userbot] Spam dimulai. Akan mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
 
     # Download foto sekali di awal biar hemat bandwidth
@@ -160,31 +160,29 @@ async def run_userbot_loop():
                 break
 
             try:
-            if foto_bytes:
+                if foto_bytes:
                     import io
-                    # --- UBAH BAGIAN INI ---
                     bio = io.BytesIO(foto_bytes)
-                    bio.name = "image.jpg" # Biar Telegram tahu ini file gambar
+                    bio.name = "image.jpg"
                     
                     await client.send_file(
                         bot_username,
                         file=bio,
                         caption=f"/bc {pesan_bc}" if pesan_bc else "",
-                        force_document=False # Ini biar gak jadi dokumen "unnamed"
+                        force_document=False
                     )
-                    # -----------------------
                     print(f"[Userbot] Sukses kirim FOTO ke {bot_username}")
-                                    
+                
                 else:
                     await client.send_message(bot_username, f"/bc {pesan_bc}")
                     print(f"[Userbot] Sukses kirim TEKS ke {bot_username}")
-
-                jumlah_terkirim += 1  # 🔥 Tambah counter tiap sukses kirim
+                
+                jumlah_terkirim += 1 
 
             except Exception as e:
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(2) #buat atur kecepatan bc
 
     await client.disconnect()
     print("[Userbot] Koneksi dimatikan, stand-by.")
@@ -194,6 +192,9 @@ def start_timer_thread():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_userbot_loop())
     loop.close()
+    
+
+    
 
 # ════════════════════════════════════════════
 #     BAGIAN 8: AMBIL SETTINGS OWNER GRUP
