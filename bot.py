@@ -133,19 +133,27 @@ async def run_userbot_loop():
             auto_spam_aktif = False
 
             try:
-                print("[DEBUG] Mencoba kirim notif selesai...")
-                bot.send_message(
-                    SUPER_ADMIN_ID,
+                import requests
+                notif_text = (
                     f"✅ *SPAM SELESAI OTOMATIS!*\n\n"
                     f"⏱ Durasi: 10 menit penuh\n"
                     f"📨 Total terkirim: {jumlah_terkirim} pesan\n"
-                    f"🕐 Selesai pada: {datetime.now().strftime('%H:%M:%S')}",
-                    parse_mode="Markdown"
+                    f"🕐 Selesai pada: {datetime.now().strftime('%H:%M:%S')}"
                 )
+                requests.post(
+                    f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                    data={
+                        "chat_id": SUPER_ADMIN_ID,
+                        "text": notif_text,
+                        "parse_mode": "Markdown"
+                    },
+                    timeout=10
+                )
+                print("[Notif] Notif selesai berhasil dikirim!")
             except Exception as e:
-                print(f"[DEBUG NOTIF] Gagal kirim notif: {e}")
+                print(f"[Notif] Gagal kirim notif: {e}")
             break
-
+            
         db = load()
         daftar_bot = db.get("target_bots", [])
 
