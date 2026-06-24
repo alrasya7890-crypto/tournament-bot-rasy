@@ -173,22 +173,32 @@ async def run_userbot_loop():
                 auto_spam_aktif = False
                 break
 
-            try:
-                # Tahap 1: Kirim Foto (tanpa caption)
+                        try:
+                # Bagian ini menggabungkan Foto dan Teks jadi 1 kesatuan
                 if foto_bytes:
                     import io
                     bio = io.BytesIO(foto_bytes)
                     bio.name = "image.jpg"
-                    await client.send_file(bot_username, file=bio, caption=None, force_document=False)
-                    await asyncio.sleep(2) # Jeda manusiawi setelah kirim foto
-
-                # Tahap 2: Kirim Perintah Teks
-                await client.send_message(bot_username, f"/bc {pesan_bc}")
-                print(f"[Userbot] Sukses spam ke {bot_username}")
+                    
+                    # Foto + Caption jadi satu perintah
+                    await client.send_file(
+                        bot_username, 
+                        file=bio, 
+                        caption=f"/bc {pesan_bc}", 
+                        force_document=False
+                    )
+                    print(f"[Userbot] Sukses kirim FOTO+TEKS ke {bot_username}")
+                
+                else:
+                    # Kalau cuma teks
+                    await client.send_message(bot_username, f"/bc {pesan_bc}")
+                    print(f"[Userbot] Sukses kirim TEKS ke {bot_username}")
+                
                 jumlah_terkirim += 1 
 
             except Exception as e:
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
+
 
             await asyncio.sleep(5) # 5 Detik Min Jeda antar bot biar nggak kena Flood Wait
 
