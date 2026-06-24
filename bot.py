@@ -109,7 +109,7 @@ async def run_userbot_loop():
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
             
             # 🔥 JEDA 10 DETIK SEKALI antar target bot sesuai request lu, Sya!
-            await asyncio.sleep(10)
+            await asyncio.sleep(3)
             
     await client.disconnect()
     print("[Userbot] Koneksi dimatikan, sistem stand-by kembali.")
