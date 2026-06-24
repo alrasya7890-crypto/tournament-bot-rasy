@@ -173,7 +173,7 @@ async def run_userbot_loop():
                 auto_spam_aktif = False
                 break
 
-                        try:
+            try:
                 # Bagian ini menggabungkan Foto dan Teks jadi 1 kesatuan
                 if foto_bytes:
                     import io
