@@ -414,7 +414,7 @@ def handle_text(message):
 
         return
 
-    # ── 11B. GRUP CHAT ───────────────────────────────
+            # ── 11B. GRUP CHAT ───────────────────────────────
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
@@ -461,4 +461,36 @@ by {oset['open_by']}"""
 
     # ── PERINTAH GRUP: INPUT SLOT BRACKET ──
     if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win"]:
-  
+        if not message.reply_to_message: return bot.reply_to(message, "❌ Reply player dulu!")
+        
+        p_user = message.reply_to_message.from_user
+        name = f"@{p_user.username}" if p_user.username else p_user.first_name
+        
+        utc_now = datetime.utcnow()
+        wib_now = utc_now + timedelta(hours=7)
+        days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+        bdata["last_update"] = wib_now.strftime(f"{days[wib_now.weekday()]}! %d-%m-%Y %H:%M WIB")
+        
+        idx = {"d1": 0, "d2": 1, "d3": 2, "d4": 3}
+        if msg_lower in idx: bdata["semi"][idx[msg_lower]] = name
+        elif msg_lower == "f1": bdata["final"][0] = name
+        elif msg_lower == "f2": bdata["final"][1] = name
+        elif msg_lower == "win": bdata["winner"] = name
+        
+        db["brackets"][str_chat_id] = bdata
+        save(db)
+        
+        semi = bdata["semi"]
+        if msg_lower in ["d1", "d2"] and semi[0] and semi[1]:
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 1 READY**:\n👉 {semi[0]}  vs  {semi[1]}")
+        elif msg_lower in ["d3", "d4"] and semi[2] and semi[3]:
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 2 READY**:\n👉 {semi[2]}  vs  {semi[3]}")
+        else:
+            bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
+
+# ════════════════════════════════════════════
+#        BAGIAN 12: RUNNING BOT
+# ════════════════════════════════════════════
+if __name__ == "__main__":
+    print("Bot aktif...")
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
