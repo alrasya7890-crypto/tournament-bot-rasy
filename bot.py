@@ -260,8 +260,13 @@ def handle_text(message):
                 elif cmd == "setrules": db["owner_settings"][str_user_id]["rules_link"] = val
                 save(db)
                 return bot.reply_to(message, f"✅ Sukses update settingan profile PC lu: {cmd}")
-
-        return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
+            
+        # 🔥 FIX JALUR: Kalau ada command khusus di atas, menu petunjuk setting ini ga bakal keluar ganggu lu lagi!
+        if msg_lower in ["/start", "/help", "menu", "help"]:
+            return bot.reply_to(message, "ℹ️ *MENU SETTING OWNER (PC)*\n\nLu bisa setting profil lu di sini:\n• `settitle [Judul]` \n• `setowner [Nama/Tele]` \n• `setpay [Link Pay]` \n• `setrules [Link Rules]`", parse_mode="Markdown")
+        
+        # Kalau cuma ketik chat random di PC, abaikan aja biar ga spam menu owner terus
+        return
 
     # ─── B. ROOM GRUP CHAT (LOGIKA BOT POT) ───
     oset = get_group_owner_settings(chat_id)
