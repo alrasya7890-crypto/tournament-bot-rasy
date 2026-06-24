@@ -493,5 +493,9 @@ by {oset['open_by']}"""
 # ════════════════════════════════════════════
 if __name__ == "__main__":
     print("Bot aktif...")
-    bot.remove_webhook() 
-    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+    try:
+        bot.remove_webhook() # Ini buat matiin jalur webhook lama
+        bot.infinity_polling(skip_pending=True) # skip_pending=True itu kunci biar pesan lama gak numpuk
+    except Exception as e:
+        print(f"Error saat polling: {e}")
+        
