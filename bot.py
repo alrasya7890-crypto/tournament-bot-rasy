@@ -151,7 +151,7 @@ async def run_userbot_loop():
 
         if not daftar_bot:
             print("[Userbot] Daftar bot kosong, menunggu 10 detik...")
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
             continue
 
         for bot_username in daftar_bot:
@@ -182,7 +182,7 @@ async def run_userbot_loop():
             except Exception as e:
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
 
-            await asyncio.sleep(2) #buat atur kecepatan bc
+            await asyncio.sleep(5) #buat atur kecepatan bc
 
     await client.disconnect()
     print("[Userbot] Koneksi dimatikan, stand-by.")
