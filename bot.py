@@ -108,7 +108,7 @@ async def download_foto_bytes(file_id):
 #    lalu kirim notif ke Rasya)
 # ════════════════════════════════════════════
 async def run_userbot_loop():
-    global auto_spam_aktif, pesan_bc, foto_bc, db
+    global auto_spam_aktif, pesan_bc, foto_bc, db, bot 
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.connect()
@@ -125,15 +125,15 @@ async def run_userbot_loop():
         else:
             print("[Userbot] Foto gagal didownload, fallback ke teks.")
 
-    jumlah_terkirim = 0  # 🔥 Hitung total pesan terkirim
+    jumlah_terkirim = 0
 
     while auto_spam_aktif:
         if datetime.now() >= waktu_selesai:
             print("[Userbot] Waktu 10 menit habis! Auto-shutdown.")
             auto_spam_aktif = False
 
-            # 🔥 NOTIF KE RASYA: Spam selesai otomatis karena waktu habis
             try:
+                print("[DEBUG] Mencoba kirim notif selesai...")
                 bot.send_message(
                     SUPER_ADMIN_ID,
                     f"✅ *SPAM SELESAI OTOMATIS!*\n\n"
@@ -143,14 +143,14 @@ async def run_userbot_loop():
                     parse_mode="Markdown"
                 )
             except Exception as e:
-                print(f"[Notif] Gagal kirim notif selesai: {e}")
+                print(f"[DEBUG NOTIF] Gagal kirim notif: {e}")
             break
 
         db = load()
         daftar_bot = db.get("target_bots", [])
 
         if not daftar_bot:
-            print("[Userbot] Daftar bot kosong, menunggu 10 detik...")
+            print("[Userbot] Daftar bot kosong, menunggu 5 detik...")
             await asyncio.sleep(5)
             continue
 
@@ -160,32 +160,27 @@ async def run_userbot_loop():
                 break
 
             try:
+                # Tahap 1: Kirim Foto (tanpa caption)
                 if foto_bytes:
                     import io
                     bio = io.BytesIO(foto_bytes)
                     bio.name = "image.jpg"
-                    
-                    await client.send_file(
-                        bot_username,
-                        file=bio,
-                        caption=f"/bc {pesan_bc}" if pesan_bc else "",
-                        force_document=False
-                    )
-                    print(f"[Userbot] Sukses kirim FOTO ke {bot_username}")
-                
-                else:
-                    await client.send_message(bot_username, f"/bc {pesan_bc}")
-                    print(f"[Userbot] Sukses kirim TEKS ke {bot_username}")
-                
+                    await client.send_file(bot_username, file=bio, caption=None, force_document=False)
+                    await asyncio.sleep(2) # Jeda manusiawi setelah kirim foto
+
+                # Tahap 2: Kirim Perintah Teks
+                await client.send_message(bot_username, f"/bc {pesan_bc}")
+                print(f"[Userbot] Sukses spam ke {bot_username}")
                 jumlah_terkirim += 1 
 
             except Exception as e:
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
 
-            await asyncio.sleep(5) #buat atur kecepatan bc
+            await asyncio.sleep(5) # 5 Detik Min Jeda antar bot biar nggak kena Flood Wait
 
     await client.disconnect()
     print("[Userbot] Koneksi dimatikan, stand-by.")
+
 
 def start_timer_thread():
     loop = asyncio.new_event_loop()
