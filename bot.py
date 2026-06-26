@@ -113,7 +113,7 @@ async def run_userbot_loop():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.connect()
 
-    waktu_selesai = datetime.now() + timedelta(minutes=10)
+    waktu_selesai = datetime.now() + timedelta(minutes=20)
     print(f"[Userbot] Spam dimulai. Akan mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
 
     # Download foto sekali di awal biar hemat bandwidth
@@ -139,7 +139,7 @@ async def run_userbot_loop():
                 
                 notif_text = (
                     f"✅ *SPAM SELESAI OTOMATIS!*\n\n"
-                    f"⏱ Durasi: 10 menit penuh\n"
+                    f"⏱ Durasi: 20 menit penuh\n"
                     f"📨 Total terkirim: {jumlah_terkirim} pesan\n"
                     f"🕐 Selesai pada: {datetime.now().strftime('%H:%M:%S')}"
                 )
@@ -200,7 +200,7 @@ async def run_userbot_loop():
                 print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
 
 
-            await asyncio.sleep(4) # 5 Detik Min Jeda antar bot biar nggak kena Flood Wait
+            await asyncio.sleep(3) # 5 Detik Min Jeda antar bot biar nggak kena Flood Wait
 
     await client.disconnect()
     print("[Userbot] Koneksi dimatikan, stand-by.")
