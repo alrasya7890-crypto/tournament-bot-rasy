@@ -244,7 +244,7 @@ async def run_autobc_loop():
             except Exception as e:
                 print(f"[AutoBC] Gagal: {e}")
 
-            await asyncio.sleep(3)  # ← Ganti jeda di sini
+            await asyncio.sleep(5)  # ← Ganti jeda di sini
 
         autobc_aktif = False
 
