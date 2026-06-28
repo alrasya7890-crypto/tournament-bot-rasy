@@ -512,7 +512,7 @@ by {oset['open_by']}"""
 # ════════════════════════════════════════════
 #        BAGIAN 11: JALANKAN BOT
 # ════════════════════════════════════════════
-        if __name__ == "__main__":
+if __name__ == "__main__":
     print("Bot aktif...")
     try:
         bot.remove_webhook()
