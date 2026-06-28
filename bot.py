@@ -3,12 +3,22 @@ import json
 import os
 import asyncio
 import threading
+import requests
 from datetime import datetime, timedelta
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon import events
 
 # ════════════════════════════════════════════
 #           BAGIAN 1: KONFIGURASI AWAL
+#
+# Isi di Railway > Variables:
+#   TELEGRAM_TOKEN  → token bot dari @BotFather
+#   OWNER_ID        → Telegram ID lo (angka)
+#   API_ID          → dari my.telegram.org
+#   API_HASH        → dari my.telegram.org
+#   SESSION_STRING  → string sesi Telethon akun lo
+#   CHANNEL_ID      → username/ID saluran lo (contoh: @namasaluran)
 # ════════════════════════════════════════════
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID_ENV = os.getenv("OWNER_ID")
@@ -17,6 +27,7 @@ SUPER_ADMIN_ID = int(OWNER_ID_ENV) if (OWNER_ID_ENV and OWNER_ID_ENV.isdigit()) 
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # ← username/ID saluran lo, isi di Railway Variables
 
 bot = telebot.TeleBot(TOKEN)
 DATA_FILE = "data.json"
@@ -25,28 +36,46 @@ telebot.apihelper.CONNECT_TIMEOUT = 90
 telebot.apihelper.READ_TIMEOUT = 90
 
 # ════════════════════════════════════════════
-#        BAGIAN 2: VARIABEL GLOBAL SPAM
+#        BAGIAN 2: VARIABEL GLOBAL SPAM & AUTOBC
+#
+# auto_spam_aktif → on/off fitur spam BC ke bot target
+# pesan_bc        → teks yang dikirim ke bot target
+# autobc_aktif    → on/off fitur auto-reply di saluran
+# teks_autobc     → teks yang direply ke setiap pesan di saluran
+# autobc_client   → instance Telethon yang lagi jalan untuk autobc
 # ════════════════════════════════════════════
 auto_spam_aktif = False
 pesan_bc = ""
-foto_bc = None  # File ID foto yang mau di-spam (None = mode teks aja)
+
+autobc_aktif = False
+teks_autobc = ""
+autobc_client = None  # Simpan client Telethon autobc biar bisa dimatiin dari luar
 
 # ════════════════════════════════════════════
-#        BAGIAN 3: DEFAULT SETTINGS OWNER
-#   (Edit di sini buat ganti nilai default
-#    judul, link pay, dan link rules awal)
+#        BAGIAN 3: DEFAULT SETTINGS TAMPILAN
+#
+# Nilai awal tampilan POT di grup.
+# Ganti langsung di sini kalau mau ubah default:
+#   title      → judul yang muncul di atas tampilan POT
+#   open_by    → nama yang muncul di "OPEN BY"
+#   pay_link   → link grup/channel pembayaran
+#   rules_link → link grup/channel rules
 # ════════════════════════════════════════════
 def get_default_owner_settings(user_id, username="@"):
     return {
-        "title": "DONE OPEN FT CS RASY",    # ← Ganti judul default di sini
+        "title": "DONE OPEN FT CS RASY",
         "open_by": username,
-        "pay_link": "https://t.me/+r-dDf3CxAHgzNGVl",    # ← Ganti link pay default
-        "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",  # ← Ganti link rules default
+        "pay_link": "https://t.me/+r-dDf3CxAHgzNGVl",
+        "rules_link": "https://t.me/+LHr8jRVQHsszZGJl",
     }
 
 # ════════════════════════════════════════════
 #        BAGIAN 4: DEFAULT DATA BRACKET
-#   (Struktur awal bracket turnamen per grup)
+#
+# Struktur awal bracket per grup.
+# semi  → 4 slot [d1, d2, d3, d4]
+# final → 2 slot [f1, f2]
+# winner → pemenang [win]
 # ════════════════════════════════════════════
 def get_default_bracket_data():
     return {
@@ -58,24 +87,20 @@ def get_default_bracket_data():
 
 # ════════════════════════════════════════════
 #        BAGIAN 5: DATABASE (LOAD & SAVE)
-#   (Semua data disimpen di data.json lokal)
+#
+# Data disimpan di data.json lokal.
+# CATATAN: Reset tiap redeploy di Railway.
 # ════════════════════════════════════════════
 def load():
     try:
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
-            if "pembeli_list" not in data: data["pembeli_list"] = []
             if "owner_settings" not in data: data["owner_settings"] = {}
             if "brackets" not in data: data["brackets"] = {}
             if "target_bots" not in data: data["target_bots"] = []
             return data
     except:
-        return {
-            "pembeli_list": [],
-            "owner_settings": {},
-            "brackets": {},
-            "target_bots": []
-        }
+        return {"owner_settings": {}, "brackets": {}, "target_bots": []}
 
 def save(data):
     with open(DATA_FILE, "w") as f:
@@ -84,87 +109,48 @@ def save(data):
 db = load()
 
 # ════════════════════════════════════════════
-#     BAGIAN 6: DOWNLOAD FOTO UNTUK SPAM
-#   (Ambil foto dari Telegram jadi bytes
-#    sebelum dikirim ke bot-bot target)
-# ════════════════════════════════════════════
-async def download_foto_bytes(file_id):
-    try:
-        file_info = bot.get_file(file_id)
-        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.get(file_url) as resp:
-                return await resp.read()
-    except Exception as e:
-        print(f"[Userbot] Gagal download foto: {e}")
-        return None
-
-# ════════════════════════════════════════════
-#      BAGIAN 7: LOOP UTAMA AUTO-SPAM
-#   (Jalan di thread terpisah, kirim pesan/
-#    foto ke semua bot target tiap 3 detik,
-#    otomatis mati setelah 10 menit,         ← DIUBAH: 5 → 10 menit
-#    lalu kirim notif ke Rasya)
+#      BAGIAN 6: LOOP UTAMA AUTO-SPAM BC
+#
+# Kirim "/bc [pesan]" ke semua bot target tiap 3 detik.
+# Otomatis mati setelah 20 menit dan kirim notif ke lo.
+#
+# Ubah timedelta(minutes=20) → ganti durasi
+# Ubah asyncio.sleep(3) → ganti jeda antar kiriman
 # ════════════════════════════════════════════
 async def run_userbot_loop():
-    global auto_spam_aktif, pesan_bc, foto_bc, db, bot 
+    global auto_spam_aktif, pesan_bc, db
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.connect()
 
-    waktu_selesai = datetime.now() + timedelta(minutes=20)
-    print(f"[Userbot] Spam dimulai. Akan mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
-
-    # Download foto sekali di awal biar hemat bandwidth
-    foto_bytes = None
-    if foto_bc:
-        foto_bytes = await download_foto_bytes(foto_bc)
-        if foto_bytes:
-            print("[Userbot] Foto berhasil didownload, siap dikirim!")
-        else:
-            print("[Userbot] Foto gagal didownload, fallback ke teks.")
+    waktu_selesai = datetime.now() + timedelta(minutes=20)  # ← Ganti durasi spam di sini
+    print(f"[Spam] Dimulai. Mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
 
     jumlah_terkirim = 0
 
     while auto_spam_aktif:
         if datetime.now() >= waktu_selesai:
-            print("[Userbot] Waktu 10 menit habis! Auto-shutdown.")
             auto_spam_aktif = False
-
-            # --- GANTI BLOK NOTIF YANG LAMA SAMA INI ---
             try:
-                import requests
-                print(f"[DEBUG] Admin ID yang terdeteksi: {SUPER_ADMIN_ID}") # Biar kita tau ID-nya bener apa nggak
-                
                 notif_text = (
                     f"✅ *SPAM SELESAI OTOMATIS!*\n\n"
                     f"⏱ Durasi: 20 menit penuh\n"
                     f"📨 Total terkirim: {jumlah_terkirim} pesan\n"
-                    f"🕐 Selesai pada: {datetime.now().strftime('%H:%M:%S')}"
+                    f"🕐 Selesai: {datetime.now().strftime('%H:%M:%S')}"
                 )
-                
-                resp = requests.post(
+                requests.post(
                     f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                    data={
-                        "chat_id": SUPER_ADMIN_ID,
-                        "text": notif_text,
-                        "parse_mode": "Markdown"
-                    },
+                    data={"chat_id": SUPER_ADMIN_ID, "text": notif_text, "parse_mode": "Markdown"},
                     timeout=15
                 )
-                print(f"[DEBUG] Respon Telegram: {resp.status_code} - {resp.text}")
             except Exception as e:
-                print(f"[Notif] Gagal total! Error: {e}")
-            # -------------------------------------------
+                print(f"[Notif] Gagal: {e}")
             break
 
-            
         db = load()
         daftar_bot = db.get("target_bots", [])
 
         if not daftar_bot:
-            print("[Userbot] Daftar bot kosong, menunggu 5 detik...")
             await asyncio.sleep(5)
             continue
 
@@ -172,60 +158,101 @@ async def run_userbot_loop():
             if datetime.now() >= waktu_selesai or not auto_spam_aktif:
                 auto_spam_aktif = False
                 break
-
             try:
-                # Bagian ini menggabungkan Foto dan Teks jadi 1 kesatuan
-                if foto_bytes:
-                    import io
-                    bio = io.BytesIO(foto_bytes)
-                    bio.name = "image.jpg"
-                    
-                    # Foto + Caption jadi satu perintah
-                    await client.send_file(
-                        bot_username, 
-                        file=bio, 
-                        caption=f"/bc {pesan_bc}", 
-                        force_document=False
-                    )
-                    print(f"[Userbot] Sukses kirim FOTO+TEKS ke {bot_username}")
-                
-                else:
-                    # Kalau cuma teks
-                    await client.send_message(bot_username, f"/bc {pesan_bc}")
-                    print(f"[Userbot] Sukses kirim TEKS ke {bot_username}")
-                
-                jumlah_terkirim += 1 
-
+                await client.send_message(bot_username, f"/bc {pesan_bc}")
+                print(f"[Spam] Sukses ke {bot_username}")
+                jumlah_terkirim += 1
             except Exception as e:
-                print(f"[Userbot] Gagal spam ke {bot_username}: {e}")
-
-
-            await asyncio.sleep(3) # 5 Detik Min Jeda antar bot biar nggak kena Flood Wait
+                print(f"[Spam] Gagal ke {bot_username}: {e}")
+            await asyncio.sleep(3)  # ← Ganti jeda antar bot di sini
 
     await client.disconnect()
-    print("[Userbot] Koneksi dimatikan, stand-by.")
-
+    print("[Spam] Selesai, disconnect.")
 
 def start_timer_thread():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_userbot_loop())
     loop.close()
-    
 
-    
+# ════════════════════════════════════════════
+#      BAGIAN 7: AUTO-REPLY SALURAN (AUTOBC)
+#
+# Userbot lo monitor saluran CHANNEL_ID.
+# Setiap ada pesan masuk di saluran, userbot otomatis
+# reply pesan itu dengan teks_autobc.
+# Otomatis mati setelah 20 menit dan kirim notif ke lo.
+#
+# Ubah timedelta(minutes=20) → ganti durasi autobc
+# CHANNEL_ID diisi di Railway Variables
+# ════════════════════════════════════════════
+async def run_autobc_loop():
+    global autobc_aktif, teks_autobc, autobc_client
+
+    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+    await client.connect()
+    autobc_client = client
+
+    waktu_selesai = datetime.now() + timedelta(minutes=20)  # ← Ganti durasi autobc di sini
+    print(f"[AutoBC] Dimulai. Mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
+
+    jumlah_reply = 0
+
+    # Event handler: dijalankan setiap ada pesan baru di saluran
+    @client.on(events.NewMessage(chats=CHANNEL_ID))
+    async def handler(event):
+        nonlocal jumlah_reply
+        if not autobc_aktif: return
+        if datetime.now() >= waktu_selesai: return
+
+        try:
+            await event.reply(teks_autobc)
+            jumlah_reply += 1
+            print(f"[AutoBC] Reply ke pesan di saluran. Total: {jumlah_reply}")
+        except Exception as e:
+            print(f"[AutoBC] Gagal reply: {e}")
+
+    # Tunggu sampai waktu habis atau dimatiin manual
+    while autobc_aktif and datetime.now() < waktu_selesai:
+        await asyncio.sleep(5)
+
+    autobc_aktif = False
+    autobc_client = None
+
+    # Kirim notif selesai ke lo
+    try:
+        notif_text = (
+            f"✅ *AUTOBC SALURAN SELESAI!*\n\n"
+            f"⏱ Durasi: 20 menit penuh\n"
+            f"💬 Total reply: {jumlah_reply} pesan\n"
+            f"🕐 Selesai: {datetime.now().strftime('%H:%M:%S')}"
+        )
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data={"chat_id": SUPER_ADMIN_ID, "text": notif_text, "parse_mode": "Markdown"},
+            timeout=15
+        )
+    except Exception as e:
+        print(f"[AutoBC Notif] Gagal: {e}")
+
+    await client.disconnect()
+    print("[AutoBC] Selesai, disconnect.")
+
+def start_autobc_thread():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_autobc_loop())
+    loop.close()
 
 # ════════════════════════════════════════════
 #     BAGIAN 8: AMBIL SETTINGS OWNER GRUP
-#   (Cek admin grup, ambil settings yang
-#    udah diset pemilik bot di grup itu)
 # ════════════════════════════════════════════
 def get_group_owner_settings(chat_id):
     fallback_settings = get_default_owner_settings(SUPER_ADMIN_ID, "@rrassyaaaa")
     try:
         admins = bot.get_chat_administrators(chat_id)
         for admin in admins:
-            if admin.user.id in db["pembeli_list"] or admin.user.id == SUPER_ADMIN_ID:
+            if admin.user.id == SUPER_ADMIN_ID:
                 admin_id_str = str(admin.user.id)
                 if admin_id_str not in db["owner_settings"]:
                     username = f"@{admin.user.username}" if admin.user.username else admin.user.first_name
@@ -238,6 +265,8 @@ def get_group_owner_settings(chat_id):
 
 # ════════════════════════════════════════════
 #        BAGIAN 9: WELCOME NEW MEMBER
+#
+# Ganti teks di bot.send_message buat ubah pesan welcome.
 # ════════════════════════════════════════════
 @bot.message_handler(content_types=['new_chat_members'])
 def welcome(message):
@@ -245,29 +274,11 @@ def welcome(message):
         bot.send_message(message.chat.id, f"👋 Welcome {user.first_name}\nngentot stay cokkk fastt inii 🔥")
 
 # ════════════════════════════════════════════
-#      BAGIAN 10: HANDLER FOTO (SET FOTO BC)
-#   (Kirim foto + caption "setfoto" di PC
-#    bot buat set foto yang mau di-spam)
+#     BAGIAN 10: HANDLER PESAN TEKS UTAMA
 # ════════════════════════════════════════════
-@bot.message_handler(content_types=['photo'])
-def handle_foto(message):
-    global foto_bc
-    if message.chat.type != "private": return
-    if message.from_user.id != SUPER_ADMIN_ID: return
-
-    caption = message.caption.strip().lower() if message.caption else ""
-    if caption == "setfoto":
-        foto_bc = message.photo[-1].file_id
-        return bot.reply_to(message, "✅ Foto BC berhasil diset! `start_auto` sekarang bakal kirim foto ini.")
-
-# ════════════════════════════════════════════
-#     BAGIAN 11: HANDLER PESAN TEKS UTAMA
-#   (Semua logika perintah teks ada di sini,
-#    dibagi antara private chat dan grup)
-# ════════════════════════════════════════════
-@bot.message_handler(content_types=['text', 'sticker', 'video', 'document', 'animation'])
+@bot.message_handler(content_types=['text', 'sticker', 'video', 'document', 'animation', 'photo'])
 def handle_text(message):
-    global db, auto_spam_aktif, pesan_bc, foto_bc
+    global db, auto_spam_aktif, pesan_bc, autobc_aktif, teks_autobc
 
     if not message.text: return
 
@@ -282,41 +293,35 @@ def handle_text(message):
         db["brackets"][str_chat_id] = get_default_bracket_data()
         save(db)
 
-    # ── 11A. PRIVATE CHAT (PC BOT) ──────────────────
+    # ── PRIVATE CHAT ─────────────────────────────────
     if message.chat.type == "private":
-        if user_id != SUPER_ADMIN_ID and user_id not in db["pembeli_list"]:
-            return bot.reply_to(message, "❌ Lu belum punya lisensi pembeli. Hubungi Rasya buat sewa bot! 😉")
 
-        if str_user_id not in db["owner_settings"]:
-            username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
-            db["owner_settings"][str_user_id] = get_default_owner_settings(user_id, username)
-            save(db)
+        if user_id != SUPER_ADMIN_ID:
+            return bot.reply_to(message, "❌ Bot ini private, khusus owner aja.")
 
-        # ── PERINTAH: FITUR (daftar semua fitur bot) ──
+        # ── PERINTAH: FITUR
         if msg_lower == "fitur":
             teks_fitur = (
                 "📋 *DAFTAR FITUR & CARA PAKAI BOT*\n"
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
 
-                "🖼 *SPAM FOTO / TEKS KE BOT TARGET*\n"
-                "┌ Kirim foto + caption `setfoto` → Set foto yang mau di-spam\n"
-                "├ `start_auto [teks]` → Mulai spam foto+teks ke semua bot target\n"
-                "├ `start_auto` → Mulai spam teks kosong (atau foto aja kalau udah diset)\n"
-                "├ `stop_auto` → Hentikan spam paksa sebelum 10 menit\n"
-                "└ `clearfoto` → Hapus foto, balik ke mode teks aja\n\n"
+                "📢 *SPAM BC KE BOT TARGET*\n"
+                "┌ `start_auto [teks]` → Mulai spam ke semua bot target\n"
+                "├ `stop_auto` → Hentikan spam paksa\n"
+                "└ Auto berhenti & notif setelah 20 menit\n\n"
+
+                "📣 *AUTO-REPLY DI SALURAN*\n"
+                "┌ `autobc [teks]` → Mulai auto-reply setiap pesan di saluran\n"
+                "├ `stopautobc` → Hentikan auto-reply paksa\n"
+                "└ Auto berhenti & notif setelah 20 menit\n\n"
 
                 "🤖 *MANAJEMEN BOT TARGET*\n"
-                "┌ `addtargetbot @username` → Tambah bot target ke daftar\n"
-                "├ `deltargetbot @username` → Hapus bot target dari daftar\n"
-                "└ `listtargetbot` → Lihat semua bot target yang terdaftar\n\n"
+                "┌ `addtargetbot @username` → Tambah bot target\n"
+                "├ `deltargetbot @username` → Hapus bot target\n"
+                "└ `listtargetbot` → Lihat semua bot target\n\n"
 
-                "👑 *MANAJEMEN LISENSI PEMBELI*\n"
-                "┌ `addlisensi [ID]` → Tambah pembeli baru pake Telegram ID\n"
-                "├ `dellisensi [ID]` → Cabut lisensi pembeli\n"
-                "└ `listlisensi` → Lihat semua pembeli aktif\n\n"
-
-                "⚙️ *SETTING PROFIL OWNER*\n"
-                "┌ `settitle [teks]` → Ganti judul di tampilan POT\n"
+                "⚙️ *SETTING TAMPILAN POT DI GRUP*\n"
+                "┌ `settitle [teks]` → Ganti judul POT\n"
                 "├ `setowner [nama]` → Ganti nama open by\n"
                 "├ `setpay [link]` → Ganti link pembayaran\n"
                 "└ `setrules [link]` → Ganti link rules\n\n"
@@ -329,48 +334,69 @@ def handle_text(message):
                 "├ `clear` → Reset bracket grup\n"
                 "├ Reply player + `d1`/`d2`/`d3`/`d4` → Set slot semi final\n"
                 "├ Reply player + `f1`/`f2` → Set slot final\n"
-                "└ Reply player + `win` → Set pemenang\n\n"
-
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "ℹ️ Spam otomatis berhenti setelah 10 menit dan lo akan dinotif."
+                "└ Reply player + `win` → Set pemenang"
             )
             return bot.reply_to(message, teks_fitur, parse_mode="Markdown")
 
-        # ── PERINTAH: START AUTO SPAM ──
+        # ── PERINTAH: START AUTO SPAM BC
         if msg_lower.startswith("start_auto"):
-            if user_id != SUPER_ADMIN_ID:
-                return bot.reply_to(message, "❌ Perintah ini khusus buat Rasya!")
             parts = msg_text.split(" ", 1)
             if not db.get("target_bots"):
                 return bot.reply_to(message, "❌ Daftar bot target kosong! Tambah dulu pake `addtargetbot`.")
             if auto_spam_aktif:
                 return bot.reply_to(message, "⚠️ Spam lagi jalan. Ketik `stop_auto` dulu.")
-
             pesan_bc = parts[1] if len(parts) > 1 else ""
             auto_spam_aktif = True
             threading.Thread(target=start_timer_thread, daemon=True).start()
+            return bot.reply_to(message,
+                f"🚀 *SPAM AKTIF!*\n"
+                f"📝 Teks: `/bc {pesan_bc}`\n"
+                f"⏱ Jeda: 3 detik antar bot\n"
+                f"🛑 Durasi: 20 menit lalu auto-mati\n"
+                f"📬 Lo bakal dinotif otomatis kalau udah selesai!",
+                parse_mode="Markdown"
+            )
 
-            if foto_bc:
-                return bot.reply_to(message, f"🚀 *SPAM FOTO+TEKS AKTIF!*\n📝 Caption: `/bc {pesan_bc}`\n🖼 Mode: Foto + Caption\n⏱ Jeda: 3 detik\n🛑 Durasi: 10 menit lalu auto-mati.\n\n📬 Lo bakal dinotif otomatis kalau udah selesai!", parse_mode="Markdown")
-            else:
-                return bot.reply_to(message, f"🚀 *SPAM TEKS AKTIF!*\n📝 Teks: `/bc {pesan_bc}`\n🖼 Mode: Teks aja\n⏱ Jeda: 3 detik\n🛑 Durasi: 10 menit lalu auto-mati.\n\n📬 Lo bakal dinotif otomatis kalau udah selesai!", parse_mode="Markdown")
-
-        # ── PERINTAH: STOP AUTO SPAM ──
+        # ── PERINTAH: STOP AUTO SPAM BC
         if msg_lower == "stop_auto":
-            if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Khusus buat Rasya!")
-            if not auto_spam_aktif: return bot.reply_to(message, "⚠️ Spam emang lagi gak aktif.")
+            if not auto_spam_aktif:
+                return bot.reply_to(message, "⚠️ Spam emang lagi gak aktif.")
             auto_spam_aktif = False
             return bot.reply_to(message, "🛑 *Spam berhasil dihentikan paksa!*", parse_mode="Markdown")
 
-        # ── PERINTAH: CLEAR FOTO BC ──
-        if msg_lower == "clearfoto":
-            if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Khusus buat Rasya!")
-            foto_bc = None
-            return bot.reply_to(message, "🗑 Foto BC dihapus. Spam balik ke mode teks aja.")
+        # ── PERINTAH: AUTOBC (auto-reply di saluran)
+        # Format: autobc [teks yang mau direply]
+        # Userbot monitor saluran CHANNEL_ID dan reply tiap pesan masuk
+        if msg_lower.startswith("autobc"):
+            parts = msg_text.split(" ", 1)
+            if len(parts) < 2:
+                return bot.reply_to(message, "❌ Format: `autobc [teks reply]`\nContoh: `autobc Halo, ini balasan otomatis!`")
+            if not CHANNEL_ID:
+                return bot.reply_to(message, "❌ CHANNEL_ID belum diisi di Railway Variables!")
+            if autobc_aktif:
+                return bot.reply_to(message, "⚠️ AutoBC lagi jalan. Ketik `stopautobc` dulu.")
+            teks_autobc = parts[1]
+            autobc_aktif = True
+            threading.Thread(target=start_autobc_thread, daemon=True).start()
+            return bot.reply_to(message,
+                f"📣 *AUTOBC SALURAN AKTIF!*\n"
+                f"💬 Teks reply: `{teks_autobc}`\n"
+                f"📡 Saluran: `{CHANNEL_ID}`\n"
+                f"🛑 Durasi: 20 menit lalu auto-mati\n"
+                f"📬 Lo bakal dinotif otomatis kalau udah selesai!",
+                parse_mode="Markdown"
+            )
 
-        # ── PERINTAH: MANAJEMEN BOT TARGET ──
+        # ── PERINTAH: STOPAUTOBC
+        # Hentikan auto-reply saluran paksa sebelum 20 menit
+        if msg_lower == "stopautobc":
+            if not autobc_aktif:
+                return bot.reply_to(message, "⚠️ AutoBC emang lagi gak aktif.")
+            autobc_aktif = False
+            return bot.reply_to(message, "🛑 *AutoBC berhasil dihentikan paksa!*", parse_mode="Markdown")
+
+        # ── PERINTAH: MANAJEMEN BOT TARGET
         if msg_lower.startswith(("addtargetbot", "deltargetbot")) or msg_lower == "listtargetbot":
-            if user_id != SUPER_ADMIN_ID: return bot.reply_to(message, "❌ Khusus buat Rasya!")
             parts = msg_text.split()
 
             if msg_lower.startswith("addtargetbot"):
@@ -394,39 +420,13 @@ def handle_text(message):
             if not db["target_bots"]: return bot.reply_to(message, "🤖 Target bot masih kosong.")
             return bot.reply_to(message, "🤖 *TARGET BOT*:\n" + "\n".join([f"├ `{b}`" for b in db["target_bots"]]), parse_mode="Markdown")
 
-        # ── PERINTAH: MANAJEMEN LISENSI PEMBELI ──
-        if msg_lower.startswith(("addpembeli", "delpembeli", "addlisensi", "dellisensi")) or msg_lower in ["listpembeli", "listlisensi"]:
-            if user_id != SUPER_ADMIN_ID:
-                return bot.reply_to(message, "❌ Cuma Rasya yang bisa akses lisensi!")
-
-            parts = msg_text.split()
-
-            if msg_lower.startswith(("addpembeli", "addlisensi")):
-                if len(parts) < 2: return bot.reply_to(message, f"❌ Contoh: {parts[0]} 123456789")
-                try:
-                    tid = int(parts[1])
-                    if tid not in db["pembeli_list"]: db["pembeli_list"].append(tid)
-                    if str(tid) not in db["owner_settings"]: db["owner_settings"][str(tid)] = get_default_owner_settings(tid)
-                    save(db)
-                    return bot.reply_to(message, f"✅ ID `{tid}` sukses jadi pembeli resmi!")
-                except ValueError: return bot.reply_to(message, "❌ ID harus angka!")
-
-            if msg_lower.startswith(("delpembeli", "dellisensi")):
-                if len(parts) < 2: return bot.reply_to(message, f"❌ Contoh: {parts[0]} 123456789")
-                try:
-                    tid = int(parts[1])
-                    if tid in db["pembeli_list"]: db["pembeli_list"].remove(tid)
-                    save(db)
-                    return bot.reply_to(message, f"❌ Lisensi ID `{tid}` dicabut!")
-                except ValueError: return bot.reply_to(message, "❌ ID harus angka!")
-
-            return bot.reply_to(message, "👑 *PEMBELI AKTIF*:\n" + "\n".join([f"├ `{oid}`" for oid in db["pembeli_list"]]), parse_mode="Markdown")
-
-        # ── PERINTAH: SETTING PROFIL OWNER ──
+        # ── PERINTAH: SETTING TAMPILAN POT
         if msg_lower.startswith("set"):
             parts = msg_text.split(" ", 1)
             if len(parts) > 1:
                 cmd, val = parts[0], parts[1]
+                if str_user_id not in db["owner_settings"]:
+                    db["owner_settings"][str_user_id] = get_default_owner_settings(user_id)
                 if cmd == "settitle": db["owner_settings"][str_user_id]["title"] = val
                 elif cmd == "setowner": db["owner_settings"][str_user_id]["open_by"] = val
                 elif cmd == "setpay": db["owner_settings"][str_user_id]["pay_link"] = val
@@ -434,17 +434,16 @@ def handle_text(message):
                 save(db)
                 return bot.reply_to(message, f"✅ Setting `{cmd}` berhasil diupdate!")
 
-        # ── PERINTAH: MENU HELP ──
+        # ── PERINTAH: HELP
         if msg_lower in ["/start", "/help", "menu", "help"]:
-            return bot.reply_to(message, "ℹ️ Ketik `fitur` buat lihat semua fitur dan cara pakainya!", parse_mode="Markdown")
+            return bot.reply_to(message, "ℹ️ Ketik `fitur` buat lihat semua perintah!", parse_mode="Markdown")
 
         return
 
-            # ── 11B. GRUP CHAT ───────────────────────────────
+    # ── GRUP CHAT ────────────────────────────────────
     oset = get_group_owner_settings(chat_id)
     bdata = db["brackets"][str_chat_id]
 
-    # ── PERINTAH GRUP: POT (tampilkan bracket) ──
     if msg_lower == "pot":
         semi, final, winner = bdata["semi"], bdata["final"], bdata["winner"]
         text = f"""🏆  {oset['title']}  🏆
@@ -472,56 +471,52 @@ def handle_text(message):
 by {oset['open_by']}"""
         return bot.reply_to(message, text)
 
-    # ── PERINTAH GRUP: PAY & RULES ──
     if msg_lower == "pay": return bot.reply_to(message, f"𝐏𝐀𝐘𝐌𝐄𝐍𝐓!! : {oset['pay_link']}")
     if msg_lower == "rules": return bot.reply_to(message, f"𝐑𝐔𝐋𝐄𝐒 𝐁𝐘 𝐑𝐀𝐒𝐘 : {oset['rules_link']}")
 
-    is_pembeli = user_id in db["pembeli_list"] or user_id == SUPER_ADMIN_ID
-    if not is_pembeli: return
+    if user_id != SUPER_ADMIN_ID: return
 
-    # ── PERINTAH GRUP: CLEAR BRACKET ──
     if msg_lower == "clear":
         db["brackets"][str_chat_id] = get_default_bracket_data()
         save(db)
         return bot.reply_to(message, "✅ Bracket grup ini berhasil dikosongkan!")
 
-    # ── PERINTAH GRUP: INPUT SLOT BRACKET ──
     if msg_lower in ["d1", "d2", "d3", "d4", "f1", "f2", "win"]:
         if not message.reply_to_message: return bot.reply_to(message, "❌ Reply player dulu!")
-        
+
         p_user = message.reply_to_message.from_user
         name = f"@{p_user.username}" if p_user.username else p_user.first_name
-        
+
         utc_now = datetime.utcnow()
         wib_now = utc_now + timedelta(hours=7)
         days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
         bdata["last_update"] = wib_now.strftime(f"{days[wib_now.weekday()]}! %d-%m-%Y %H:%M WIB")
-        
+
         idx = {"d1": 0, "d2": 1, "d3": 2, "d4": 3}
         if msg_lower in idx: bdata["semi"][idx[msg_lower]] = name
         elif msg_lower == "f1": bdata["final"][0] = name
         elif msg_lower == "f2": bdata["final"][1] = name
         elif msg_lower == "win": bdata["winner"] = name
-        
+
         db["brackets"][str_chat_id] = bdata
         save(db)
-        
+
         semi = bdata["semi"]
         if msg_lower in ["d1", "d2"] and semi[0] and semi[1]:
-            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 1 READY**:\n👉 {semi[0]}  vs  {semi[1]}")
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 *SEMI FINAL SLOT 1 READY*:\n👉 {semi[0]}  vs  {semi[1]}", parse_mode="Markdown")
         elif msg_lower in ["d3", "d4"] and semi[2] and semi[3]:
-            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 **SEMI FINAL SLOT 2 READY**:\n👉 {semi[2]}  vs  {semi[3]}")
+            bot.reply_to(message, f"✅ Data Updated!\n\n🔴 *SEMI FINAL SLOT 2 READY*:\n👉 {semi[2]}  vs  {semi[3]}", parse_mode="Markdown")
         else:
-            bot.reply_to(message, "✅ Data Bracket Grup Diupdate!")
+            bot.reply_to(message, "✅ Data Bracket Diupdate!")
 
 # ════════════════════════════════════════════
-#        BAGIAN 12: RUNNING BOT
+#        BAGIAN 11: JALANKAN BOT
 # ════════════════════════════════════════════
-if __name__ == "__main__":
+        if __name__ == "__main__":
     print("Bot aktif...")
     try:
-        bot.remove_webhook() # Ini buat matiin jalur webhook lama
-        bot.infinity_polling(skip_pending=True) # skip_pending=True itu kunci biar pesan lama gak numpuk
+        bot.remove_webhook()
+        bot.infinity_polling(skip_pending=True)
     except Exception as e:
         print(f"Error saat polling: {e}")
-        
+
