@@ -176,67 +176,93 @@ def start_timer_thread():
     loop.close()
 
 # ════════════════════════════════════════════
-#      BAGIAN 7: AUTO-REPLY SALURAN (AUTOBC)
+#      BAGIAN 7: AUTOBC — MONITOR SALURAN
 #
-# Userbot lo monitor saluran CHANNEL_ID.
-# Setiap ada pesan masuk di saluran, userbot otomatis
-# reply pesan itu dengan teks_autobc.
-# Otomatis mati setelah 20 menit dan kirim notif ke lo.
+# Userbot monitor saluran CHANNEL_ID.
+# Kalau lo reply pesan di saluran dengan "autobc",
+# userbot reply pesan itu dengan /bc tiap 3 detik
+# selama 20 menit lalu notif lo.
 #
-# Ubah timedelta(minutes=20) → ganti durasi autobc
-# CHANNEL_ID diisi di Railway Variables
+# Ubah timedelta(minutes=20) → ganti durasi
+# Ubah asyncio.sleep(3) → ganti jeda antar reply
 # ════════════════════════════════════════════
 async def run_autobc_loop():
-    global autobc_aktif, teks_autobc, autobc_client
+    global autobc_aktif, teks_autobc
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.connect()
-    autobc_client = client
 
-    waktu_selesai = datetime.now() + timedelta(minutes=20)  # ← Ganti durasi autobc di sini
-    print(f"[AutoBC] Dimulai. Mati pada: {waktu_selesai.strftime('%H:%M:%S')}")
+    print(f"[AutoBC] Userbot standby monitor saluran {CHANNEL_ID}...")
 
-    jumlah_reply = 0
-
-    # Event handler: dijalankan setiap ada pesan baru di saluran
     @client.on(events.NewMessage(chats=CHANNEL_ID))
     async def handler(event):
-        nonlocal jumlah_reply
-        if not autobc_aktif: return
-        if datetime.now() >= waktu_selesai: return
+        global autobc_aktif, teks_autobc
 
+        # Cek kalau pesan itu reply dari lo dan isinya "autobc"
+        if not event.is_reply: return
+        if event.sender_id != SUPER_ADMIN_ID: return
+
+        msg = event.message.message.strip()
+        if not msg.lower().startswith("autobc"): return
+        if autobc_aktif: return
+
+        parts = msg.split(" ", 1)
+        teks_autobc = parts[1] if len(parts) > 1 else pesan_bc
+
+        # Ambil ID pesan yang di-reply
+        reply_msg = await event.get_reply_message()
+        target_message_id = reply_msg.id
+
+        autobc_aktif = True
+        waktu_selesai = datetime.now() + timedelta(minutes=20)  # ← Ganti durasi di sini
+        jumlah_reply = 0
+
+        print(f"[AutoBC] Triggered! Mulai reply ke message_id {target_message_id}")
+
+        # Kirim notif mulai ke lo
         try:
-            await event.reply(teks_autobc)
-            jumlah_reply += 1
-            print(f"[AutoBC] Reply ke pesan di saluran. Total: {jumlah_reply}")
-        except Exception as e:
-            print(f"[AutoBC] Gagal reply: {e}")
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                data={
+                    "chat_id": SUPER_ADMIN_ID,
+                    "text": f"📣 *AUTOBC AKTIF!*\n💬 Teks: `/bc {teks_autobc}`\n⏱ Jeda: 3 detik\n🛑 Durasi: 20 menit",
+                    "parse_mode": "Markdown"
+                },
+                timeout=10
+            )
+        except: pass
 
-    # Tunggu sampai waktu habis atau dimatiin manual
-    while autobc_aktif and datetime.now() < waktu_selesai:
-        await asyncio.sleep(5)
+        while autobc_aktif and datetime.now() < waktu_selesai:
+            try:
+                await client.send_message(
+                    CHANNEL_ID,
+                    f"/bc {teks_autobc}",
+                    reply_to=target_message_id
+                )
+                jumlah_reply += 1
+                print(f"[AutoBC] Reply ke-{jumlah_reply} terkirim")
+            except Exception as e:
+                print(f"[AutoBC] Gagal: {e}")
 
-    autobc_aktif = False
-    autobc_client = None
+            await asyncio.sleep(3)  # ← Ganti jeda di sini
 
-    # Kirim notif selesai ke lo
-    try:
-        notif_text = (
-            f"✅ *AUTOBC SALURAN SELESAI!*\n\n"
-            f"⏱ Durasi: 20 menit penuh\n"
-            f"💬 Total reply: {jumlah_reply} pesan\n"
-            f"🕐 Selesai: {datetime.now().strftime('%H:%M:%S')}"
-        )
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data={"chat_id": SUPER_ADMIN_ID, "text": notif_text, "parse_mode": "Markdown"},
-            timeout=15
-        )
-    except Exception as e:
-        print(f"[AutoBC Notif] Gagal: {e}")
+        autobc_aktif = False
 
+        # Notif selesai
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                data={
+                    "chat_id": SUPER_ADMIN_ID,
+                    "text": f"✅ *AUTOBC SELESAI!*\n💬 Total reply: {jumlah_reply}\n🕐 Selesai: {datetime.now().strftime('%H:%M:%S')}",
+                    "parse_mode": "Markdown"
+                },
+                timeout=10
+            )
+        except: pass
+
+    await client.run_until_disconnected()
     await client.disconnect()
-    print("[AutoBC] Selesai, disconnect.")
 
 def start_autobc_thread():
     loop = asyncio.new_event_loop()
@@ -311,8 +337,9 @@ def handle_text(message):
                 "└ Auto berhenti & notif setelah 20 menit\n\n"
 
                 "📣 *AUTO-REPLY DI SALURAN*\n"
-                "┌ `autobc [teks]` → Mulai auto-reply setiap pesan di saluran\n"
-                "├ `stopautobc` → Hentikan auto-reply paksa\n"
+                "┌ `startautobc` → Aktifkan userbot standby monitor saluran\n"
+                "├ Reply pesan di saluran dengan `autobc` → userbot reply /bc tiap 3 detik\n"
+                "├ `stopautobc` → Hentikan autobc paksa\n"
                 "└ Auto berhenti & notif setelah 20 menit\n\n"
 
                 "🤖 *MANAJEMEN BOT TARGET*\n"
@@ -364,36 +391,27 @@ def handle_text(message):
             auto_spam_aktif = False
             return bot.reply_to(message, "🛑 *Spam berhasil dihentikan paksa!*", parse_mode="Markdown")
 
-        # ── PERINTAH: AUTOBC (auto-reply di saluran)
-        # Format: autobc [teks yang mau direply]
-        # Userbot monitor saluran CHANNEL_ID dan reply tiap pesan masuk
-        if msg_lower.startswith("autobc"):
-            parts = msg_text.split(" ", 1)
-            if len(parts) < 2:
-                return bot.reply_to(message, "❌ Format: `autobc [teks reply]`\nContoh: `autobc Halo, ini balasan otomatis!`")
-            if not CHANNEL_ID:
-                return bot.reply_to(message, "❌ CHANNEL_ID belum diisi di Railway Variables!")
+        # ── PERINTAH: STARTAUTOBC
+        # Jalankan userbot standby monitor saluran.
+        # Setelah aktif, reply pesan di saluran dengan "autobc"
+        # buat trigger userbot reply /bc ke pesan itu tiap 3 detik
+        if msg_lower == "startautobc":
             if autobc_aktif:
-                return bot.reply_to(message, "⚠️ AutoBC lagi jalan. Ketik `stopautobc` dulu.")
-            teks_autobc = parts[1]
-            autobc_aktif = True
+                return bot.reply_to(message, "⚠️ AutoBC lagi jalan.")
             threading.Thread(target=start_autobc_thread, daemon=True).start()
             return bot.reply_to(message,
-                f"📣 *AUTOBC SALURAN AKTIF!*\n"
-                f"💬 Teks reply: `{teks_autobc}`\n"
-                f"📡 Saluran: `{CHANNEL_ID}`\n"
-                f"🛑 Durasi: 20 menit lalu auto-mati\n"
-                f"📬 Lo bakal dinotif otomatis kalau udah selesai!",
+                "📡 *Userbot standby monitor saluran!*\n\n"
+                "Sekarang pergi ke saluran, reply pesan yang mau di-BC dengan `autobc` buat mulai.",
                 parse_mode="Markdown"
             )
 
         # ── PERINTAH: STOPAUTOBC
-        # Hentikan auto-reply saluran paksa sebelum 20 menit
+        # Hentikan autobc paksa sebelum 20 menit habis
         if msg_lower == "stopautobc":
             if not autobc_aktif:
                 return bot.reply_to(message, "⚠️ AutoBC emang lagi gak aktif.")
             autobc_aktif = False
-            return bot.reply_to(message, "🛑 *AutoBC berhasil dihentikan paksa!*", parse_mode="Markdown")
+            return bot.reply_to(message, "🛑 *AutoBC dihentikan paksa!*", parse_mode="Markdown")
 
         # ── PERINTAH: MANAJEMEN BOT TARGET
         if msg_lower.startswith(("addtargetbot", "deltargetbot")) or msg_lower == "listtargetbot":
